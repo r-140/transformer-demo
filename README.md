@@ -13,8 +13,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 python3 -m unittest discover -s tests -v
-python3 train.py --steps 2000 --out runs/reverse
-python3 inspect_model.py runs/reverse --digits 3,1,4,1,5,9
+python3 train.py --steps 2000 --out runs/instructions
+python3 inspect_model.py runs/instructions --digits 3,1,4,1,5,9
+python3 inspect_model.py runs/instructions \
+  --operation SORT --digits 3,1,4,1,5,9
+python3 inspect_model.py runs/instructions --operation ADD --left 27 --right 15
+# Expected: [4, 2, 12]
+
+python3 inspect_model.py runs/instructions --operation SUB --left 27 --right 15
+# Expected: [1, 2, 12]
+
+python3 inspect_model.py runs/instructions --operation MUL --left 12 --right 3
+# Expected: [3, 6, 12]
+
+python3 inspect_model.py runs/instructions --operation DIV --left 36 --right 3
+# Expected: [1, 2, 12]
 ```
 
 For a CPU-only installation, you can install PyTorch separately first:

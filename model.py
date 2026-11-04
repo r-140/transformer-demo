@@ -44,12 +44,13 @@ class Block(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, vocab=13, dim=64, heads=4, layers=2, max_len=64,
+    def __init__(self, vocab=19, dim=64, heads=4, layers=2, max_len=64,
                  dropout=0.1, positions=True, causal=True):
         super().__init__()
         self.config = dict(vocab=vocab, dim=dim, heads=heads, layers=layers,
                            max_len=max_len, dropout=dropout, positions=positions, causal=causal)
         self.token = nn.Embedding(vocab, dim)
+        self.head = nn.Linear(dim, vocab)
         self.position = nn.Embedding(max_len, dim)
         self.blocks = nn.ModuleList([Block(dim, heads, dropout, causal) for _ in range(layers)])
         self.norm, self.head = nn.LayerNorm(dim), nn.Linear(dim, vocab)
