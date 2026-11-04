@@ -13,26 +13,32 @@ __pycache__/
 .coverage.*
 htmlcov/
 coverage.xml
+.ipynb_checkpoints/
 
 # Python packaging output
 build/
 dist/
 *.egg-info/
 
-# Generated event archives, manifests, and rebuild files
+# Generated datasets; keep the directory placeholder tracked
 /data/*
 !/data/.gitkeep
 
-# Local Flink state and runtime output
+# Training runs: metrics, generated plots, and checkpoints
+/runs/
 /checkpoints/
-/savepoints/
-/state/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Runtime logs
 /logs/
 *.log
 *.log.*
 *.pid
 
-# Local environment overrides; keep shared druid.env tracked
+# Local environment overrides
 .env
 .env.*
 !.env.example
