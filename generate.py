@@ -2,6 +2,7 @@
 import argparse
 import itertools
 import json
+import math
 import random
 from pathlib import Path
 
@@ -19,12 +20,13 @@ def record(op, operands):
         prompt = [BOS, OPS[op]] + source + [SEP]
         answer = source[::-1] if op == 'REVERSE' else sorted(source)
     else:
-        a, b = operands
-        if op == 'ADD': result = a + b
-        elif op == 'SUB': result = a - b
-        elif op == 'MUL': result = a * b
-        else: result = a // b
-        prompt = [BOS, OPS[op]] + digits(a) + [SEP] + digits(b) + [SEP]
+        if op == 'ADD': result = sum(operands)
+        elif op == 'MUL': result = math.prod(operands)
+        elif op == 'SUB': result = operands[0] - operands[1]
+        else: result = operands[0] // operands[1]
+        prompt = [BOS, OPS[op]]
+        for operand in operands:
+            prompt += digits(operand) + [SEP]
         answer = digits(result)
     answer = answer + [EOS]
     full = prompt + answer
@@ -33,19 +35,44 @@ def record(op, operands):
                 labels=[-100] * (len(prompt)-1) + answer)
 
 
-def arithmetic_groups(op, maximum, quotient_max):
+def capacity(op, maximum, quotient_max, operands, lo, hi):
     if op in ('ADD', 'MUL'):
-        # A commutative pair and its swap are one split group.
-        for a in range(maximum+1):
-            for b in range(a, maximum+1):
-                yield [[a,b]] if a == b else [[a,b],[b,a]]
-    elif op == 'SUB':
-        for a in range(maximum+1):
-            for b in range(a+1): yield [[a,b]]
-    else:
-        # maximum limits the DIVISOR, not the dividend.
-        for b in range(1, maximum+1):
-            for q in range(quotient_max+1): yield [[b*q,b]]
+        return math.comb(maximum + operands, operands)
+    if op == 'SUB':
+        return (maximum + 1) * (maximum + 2) // 2
+    if op == 'DIV':
+        return maximum * (quotient_max + 1)
+    return sum(10 ** n for n in range(lo, hi + 1))
+
+
+def unrank_combination(rank, size, count):
+    """Lexicographic combination unranking, without enumerating the space."""
+    result, lower = [], 0
+    for remaining in range(count - 1, -1, -1):
+        for value in range(lower, size):
+            block = math.comb(size - value - 1, remaining)
+            if rank < block:
+                result.append(value)
+                lower = value + 1
+                break
+            rank -= block
+    return result
+
+
+def arithmetic_groups(op, maximum, quotient_max, operands, ranks):
+    for rank in ranks:
+        if op in ('ADD', 'MUL'):
+            # Repeated combinations map to ordinary strictly increasing ones.
+            combination = unrank_combination(rank, maximum + operands, operands)
+            values = [value - i for i, value in enumerate(combination)]
+            yield [list(v) for v in sorted(set(itertools.permutations(values)))]
+        elif op == 'SUB':
+            a = (math.isqrt(8 * rank + 1) - 1) // 2
+            b = rank - a * (a + 1) // 2
+            yield [[a, b]]
+        else:
+            b, q = divmod(rank, quotient_max + 1)
+            yield [[(b + 1) * q, b + 1]]
 
 
 def sequence_groups(rng, total, lo, hi):
@@ -70,6 +97,14 @@ def sequence_groups(rng, total, lo, hi):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--operations', nargs='+', choices=list(OPS), default=list(OPS))
+    p.add_argument('--max-data', '--is-max-data', action='store_true',
+                   help='Use all groups and split them 70/15/15 by default')
+    p.add_argument('--operands', type=int, default=2,
+                   help='Number of operands for ADD/MUL; SUB/DIV require 2')
+    p.add_argument('--validation-ratio', type=float, default=0.15)
+    p.add_argument('--test-ratio', type=float, default=0.15)
+    p.add_argument('--max-examples', type=int, default=1000000,
+                   help='Preflight limit on total generated records')
     p.add_argument('--out', default='data')
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--train', type=int, default=1000, help='Groups per operation')
@@ -83,6 +118,18 @@ def main():
     p.add_argument('--context', type=int, default=64)
     p.add_argument('--overwrite', action='store_true')
     a = p.parse_args()
+    if not 2 <= a.operands <= 8:
+        p.error('operands must be between 2 and 8')
+    if a.operands != 2 and any(op in ('SUB', 'DIV') for op in a.operations):
+        p.error('More than two operands currently supported only for ADD/MUL')
+    if (not 0 <= a.validation_ratio < 1 or not 0 <= a.test_ratio < 1
+            or a.validation_ratio + a.test_ratio >= 1):
+        p.error('Split ratios must be nonnegative with sum < 1')
+    if a.max_examples < 1:
+        p.error('max-examples must be positive')
+    if a.max_data and any(option.split('=')[0] in ('--train', '--validation', '--test')
+                          for option in __import__('sys').argv[1:]):
+        p.error('--max-data cannot be combined with explicit split counts')
     if min(a.train,a.validation,a.test,a.max_number,a.max_quotient)<0:
         p.error('Counts and numeric maxima must be nonnegative')
     if a.train < 1 or not 1<=a.min_length<=a.max_length or a.context<1:
@@ -92,7 +139,27 @@ def main():
         p.error('This in-memory educational generator limits numeric maxima to 999')
     operations=list(dict.fromkeys(a.operations))
     counts=dict(train=a.train, validation=a.validation, test=a.test)
-    total=sum(counts.values())
+    capacities = {op: capacity(op, a.max_number, a.max_quotient, a.operands,
+                               a.min_length, a.max_length) for op in operations}
+    operation_counts = {}
+    for op, available in capacities.items():
+        if a.max_data:
+            validation = int(available * a.validation_ratio)
+            test = int(available * a.test_ratio)
+            operation_counts[op] = dict(train=available-validation-test,
+                                        validation=validation, test=test)
+        else:
+            operation_counts[op] = counts.copy()
+        if sum(operation_counts[op].values()) > available:
+            p.error(f'{op}: requested {sum(operation_counts[op].values())} groups; only {available} available')
+        print(op, 'available groups:', available, 'selected:', operation_counts[op])
+    # Conservative bound: every commutative group can expand to n! records.
+    bound = sum(sum(operation_counts[op].values()) *
+                (math.factorial(a.operands) if op in ('ADD', 'MUL') else 1)
+                for op in operations)
+    if bound > a.max_examples:
+        p.error(f'Conservative record bound {bound:,} exceeds --max-examples={a.max_examples:,}; '
+                'reduce counts/range or explicitly raise the limit')
     out=Path(a.out)
     files=[out/f'{s}.jsonl' for s in counts]+[out/'dataset-config.json']
     if not a.overwrite and any(pth.exists() for pth in files):
@@ -103,13 +170,14 @@ def main():
     try:
         for op in operations:
             rng=random.Random(a.seed+OPS[op]*1000003)
+            counts = operation_counts[op]
+            total = sum(counts.values())
             if op in ('REVERSE','SORT'):
                 groups=sequence_groups(rng,total,a.min_length,a.max_length)
             else:
-                groups=list(arithmetic_groups(op,a.max_number,a.max_quotient))
-                if total>len(groups):
-                    raise ValueError(f'{op}: requested {total} groups; only {len(groups)} available')
-                rng.shuffle(groups);groups=groups[:total]
+                ranks = rng.sample(range(capacities[op]), total)
+                groups = list(arithmetic_groups(op, a.max_number, a.max_quotient,
+                                                a.operands, ranks))
             offset=0
             for split,n in counts.items():
                 for group in groups[offset:offset+n]:
@@ -139,7 +207,9 @@ def main():
             for row in rows: f.write(json.dumps(row)+'\n')
         print(split, {op:sum(r['operation']==op for r in rows) for op in operations})
     metadata=vars(a).copy()
-    metadata['count_unit']='groups per operation; ADD/MUL groups include both operand orders'
+    metadata['available_groups'] = capacities
+    metadata['split_groups'] = operation_counts
+    metadata['count_unit']='groups per operation; ADD/MUL groups include all distinct operand permutations'
     metadata['vocab']=19
     metadata['split_examples']={s:len(rows) for s,rows in splits.items()}
     (out/'dataset-config.json').write_text(json.dumps(metadata,indent=2)+'\n')

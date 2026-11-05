@@ -1,12 +1,12 @@
-# Verification Results
+# Verification
 
-Python 3.12, torch 2.15.0+cpu. CPU, 2 threads, seed=42.
-
-- Three unit tests: causal isolation and normalization, target shifting and masking, finite gradients — PASS.
-- Transformer reversal task, length=6, 500 steps: validation loss 0.001 (rounded), teacher-forced token accuracy 100%, free-running exact match 32/32.
-- `inspect_model.py`: input 3,1,4,1,5,9 → output 9,5,1,4,1,3,EOS; PNG files generated.
-- LSTM smoke test: 2 steps covering forward/backward passes, evaluation, and checkpoint saving — PASS. LSTM convergence was not evaluated.
-
-These are single-seed results on a simple synthetic task, not an assessment of general
-Transformer capabilities or evidence of superiority over RNNs or LSTMs.
-The completed run is included in `runs/demo`; plots can be viewed without training.
+- Four unit tests passed: minimum epochs and patience, cumulative small improvements,
+  maximization mode, and nonfinite monitor rejection.
+- CPU end-to-end smoke run: 16-dimensional one-block Transformer, four ADD examples,
+  two updates per epoch, deliberately large min_delta=100 to force a plateau decision.
+  Stopped after epoch 3 with min_epochs=3 and patience=2.
+- Verified all four checkpoint files, metrics.csv, training-summary.json and learning.png.
+- Verified model.pt and in-memory parameters equal the selected best-loss.pt weights.
+- Syntax compilation passed. This is implementation validation, not an arithmetic
+  convergence benchmark. The tiny smoke run deliberately reused data for train and
+  validation to test control flow only; real experiments require disjoint splits.

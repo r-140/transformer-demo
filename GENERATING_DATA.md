@@ -112,3 +112,78 @@ Splits test new prompts within the configured ranges, not universal arithmetic
 or extrapolation. Reports should include per-task exact match, train versus
 validation evaluation, carries/borrows and operand lengths. Larger datasets are
 an experiment; convergence and arithmetic generalization are not guaranteed.
+
+## Automatic full-space split and multiple operands
+
+Use the updated `generate.py` in place of the previous generator. It keeps the
+19-token vocabulary and the existing JSONL schema.
+
+```bash
+python3 generate.py --operations ADD --max-number 199 \
+  --max-data --out data --overwrite
+```
+
+`--max-data` (alias `--is-max-data`) is a boolean flag: do not append `yes` or
+`true`. It uses every available **group**, reserving 15% for validation and 15%
+for test by default. These percentages refer to the **whole dataset**, not to
+the training portion; this is a configurable convention, not a required rule.
+Validation and test counts are rounded down; training receives the remainder.
+Do not combine the flag with explicit `--train`, `--validation`, or `--test`.
+Without the flag, explicit group counts work as before.
+
+For two ADD operands in 0..199, the maximum is C(201,2)=20,100 groups:
+14,070 training, 3,015 validation, and 3,015 test. Each group contains all distinct
+operand orders, so the JSONL record counts differ from group counts and their
+percentages may differ slightly. `dataset-config.json` records both.
+
+Customize the split with `--validation-ratio 0.1 --test-ratio 0.1` (80/10/10).
+The generator prints available and selected group counts for each operation.
+
+```bash
+# Four summands, values 0..9: C(13,4)=715 groups, 10,000 ordered examples.
+python3 generate.py --operations ADD --operands 4 --max-number 9 \
+  --max-data --out data/add-four --overwrite
+
+# Selected groups rather than the complete space.
+python3 generate.py --operations ADD MUL --operands 3 --max-number 19 \
+  --train 800 --validation 100 --test 100 --out data/three --overwrite
+```
+
+`--operands` means the number of numbers, not the number of arithmetic
+operators. Four operands require three additions or multiplications. Supported
+values are 2..8. Only ADD and MUL currently support more than two operands;
+SUB and DIV explicitly require two. REVERSE/SORT use their existing length
+options. Mixed expressions and operator precedence are a separate task.
+
+For N possible operand values and n operands, ADD/MUL have
+`C(N+n-1,n)` groups. Every distinct permutation of a group stays in the same
+split; this prevents leakage from commutativity. The prompt is
+`BOS ADD a SEP b SEP c SEP ...`, followed by the decimal answer and EOS.
+The generator computes sum/product over all operands. No new token IDs are
+needed. However, the old arithmetic inference CLI accepts only `--left` and
+`--right`: it needs an operand-list interface before you can inspect n-operand
+predictions through that CLI. Training loads the existing JSONL format;
+check model context and generation length for larger examples.
+
+For binary SUB the capacity is `(M+1)(M+2)/2`, keeping nonnegative results.
+For binary DIV it is `M*(Q+1)`, where M is the maximum positive divisor and Q
+is the maximum quotient; dividends may exceed M. `--max-quotient` affects
+only DIV. Sequence capacities are the sum of `10**length` over allowed lengths.
+
+Full-space datasets grow rapidly. The generator checks a conservative record
+bound before allocating groups: selected ADD/MUL groups times `n!`, plus the
+selected records for other tasks. By default this cannot exceed 1,000,000.
+An explicit `--max-examples` can raise the limit if memory permits; the bound
+may overestimate records with repeated operands. `--max-data` never silently
+samples or truncates a space that exceeds the limit. Output is validated before
+files are overwritten. Manual commutative sampling uses combination ranks and
+does not enumerate the entire candidate space. Exact split membership differs
+from the older generator even with the same seed: regenerate all splits together.
+
+Verification: three standard-library unit tests cover complete small n-operand
+spaces, binary SUB/DIV spaces, shifted labels, and split leakage. A full binary
+ADD run for 0..199 produced 20,100 groups and 40,000 ordered records.
+
+```bash
+python3 -m unittest discover -s . -p 'test_*.py'
+```

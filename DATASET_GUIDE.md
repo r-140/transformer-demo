@@ -1,6 +1,6 @@
 # Building Training, Validation, and Test Data
 
-This guide describes the current `generate.py` and `loader.py` instruction dataset.
+This guide describes the instruction JSONL schema, `loader.py`, and the updated grouped `generate.py`.
 All arithmetic examples use nonnegative integer answers and a vocabulary of 19 tokens.
 
 ## 1. Token IDs
@@ -128,90 +128,163 @@ assert input_ids == (prompt + answer_ids)[:-1]
 Also check the arithmetic result independently and ensure no unsupported sign,
 fraction, or decimal separator enters digit conversion.
 
-## 4. Generate the three files
+## 4. Generate the three files with the grouped generator
 
-From the project root containing `generate.py`:
+This section describes the updated CLI generator from transformer-dataset-generator.zip,
+which supersedes the original rejection-sampling generator. The JSONL schema and
+vocabulary remain unchanged; counts now mean GROUPS PER OPERATION.
 
 ```bash
-python3 generate.py --out data --seed 42
+python3 generate.py --operations ADD --train 4000 --validation 500 --test 550 --out data --seed 42 --overwrite
 ```
 
-Only `--out` and `--seed` are implemented as generator CLI options.
-The output directory contains:
+The output is train.jsonl, validation.jsonl, test.jsonl and dataset-config.json.
+Existing files require --overwrite. Select any supported operations with
+--operations ADD SUB MUL DIV REVERSE SORT. Without this option all are selected.
+Counts apply separately to each operation. Final record counts are printed and
+stored in dataset-config.json. The trainer still reads the data/ paths unless
+its loading paths are changed.
 
-| File | Current count per operation | Total examples | Purpose |
-|---|---|---|---|
-| `train.jsonl` | 1,000 | 6,000 | Compute gradients and update weights |
-| `validation.jsonl` | 150 | 900 | Monitor quality and choose settings |
-| `test.jsonl` | 150 | 900 | Final evaluation after choosing settings |
+For ADD/MUL a group contains both operand orders, except a=a gives one record.
+For SUB/DIV/REVERSE/SORT each group gives one record. Consequently equal group
+counts do not produce exactly equal numbers of examples across operations.
 
-The generator overwrites these filenames. Use a new output directory to preserve
-an earlier dataset. Keep seed, generator version, and configuration with experiment
-results. Given the same code and compatible environment, the seed makes generation
-reproducible; it is not a guarantee that another algorithm or code version produces
-the same records.
+## 5. Why are there 5,050 ADD groups for 0–99?
 
-To change counts, edit this dictionary in `generate.py`:
+There are N=100 allowed operand VALUES, including zero. The number of ordered
+pairs is N squared: 100 × 100 = 10,000. Each pair is a separate prompt.
+
+For commutative operations ADD and MUL, the generator groups (a,b) with (b,a).
+Repeated operands such as (7,7) are allowed. Thus groups are combinations WITH
+repetition, not ordinary combinations of two distinct values:
+
+\[
+G=\binom{N+2-1}{2}=\binom{N+1}{2}=\frac{N(N+1)}{2}.
+\]
+
+For N=100:
+
+\[
+G=\frac{100\cdot101}{2}=5\,050.
+\]
+
+Two derivations make the count concrete:
+
+- There are 100 diagonal pairs (a,a), each giving one group. The remaining
+  9,900 ordered pairs form 4,950 two-element groups. Total: 100 + 4,950 = 5,050.
+- Enumerate a<=b: 100 choices when a=0, 99 when a=1, down to 1 when a=99.
+  The sum 100+99+...+1 is 5,050.
+
+The count describes INPUT groups, not distinct sums. There are only 199 possible
+sum values from 0 through 198, and many input groups have the same answer.
+
+| Operand range, inclusive | N | Ordered ADD examples | Unordered ADD groups |
+|---|---:|---:|---:|
+| 0–9 | 10 | 100 | 55 |
+| 0–99 | 100 | 10,000 | 5,050 |
+| 0–199 | 200 | 40,000 | 20,100 |
+
+For a contiguous inclusive range L through U, N=U-L+1. For --max-number M with
+minimum zero, N=M+1 and G=(M+1)(M+2)/2.
+
+### Split budget and exact record count
+
+Train, validation and test use disjoint groups, so their requested counts must satisfy:
+
+\[
+G_{train}+G_{validation}+G_{test}\leq G_{available}.
+\]
+
+The command above allocates 4,000 + 500 + 550 = 5,050, exactly all ADD groups.
+The training maximum of 4,000 is a CHOICE after reserving validation/test, not a
+mathematical ceiling imposed independently on training.
+
+If a split contains g groups, of which d have identical operands, its record count is:
+
+\[
+E=2g-d.
+\]
+
+Thus 4,000 ADD training groups yield approximately 8,000 records; the exact count
+depends on how many diagonal pairs were assigned to train. All three splits
+combined contain exactly 10,000 ordered examples when all 5,050 groups are used.
+
+### Other operations
+
+| Operation and constraints | Maximum groups |
+|---|---|
+| ADD/MUL, both operands from N values, swap grouped | N(N+1)/2 |
+| SUB, operands 0..M and a>=b | N(N+1)/2, where N=M+1 |
+| DIV, divisor 1..D and quotient 0..Q; dividend=b*q | D(Q+1) |
+| REVERSE/SORT, digit-sequence lengths l..u | Sum of 10^n for n=l..u |
+
+SUB's triangular count comes from restricting a>=b, not from declaring subtraction
+commutative. DIV's formula describes THIS generator's divisor/quotient construction;
+it is not the count obtained by restricting both dividend and divisor to 0..M.
+REVERSE/SORT groups do not collapse different sequences that share an output.
+
+Default DIV has 99 divisors and 100 quotients, hence 9,900 groups, with dividends
+up to 9,801. Negative answers, fractions and remainders are not represented.
+For numeric maxima beyond 99, new operand lengths also make the task harder.
+The supplied in-memory generator limits numeric maxima to 999.
+
+### Extension to k operands
+
+For N allowed values, k operands, arbitrary repetitions and order ignored:
+
+\[
+G=\binom{N+k-1}{k}.
+\]
+
+If order matters there are N^k tuples. If repeats are forbidden and order is ignored,
+there are binomial(N,k) groups instead. The current project implements binary
+arithmetic only; the k-operand formula does not add multi-operand support by itself.
+
+For k>2, group sizes vary: the number of distinct permutations is
+k!/(m1! m2! ...), where mi are repetition counts. Do not assume every group
+contains k! records.
+
+### Check the arithmetic in Python
 
 ```python
-counts = {'train': 1000, 'validation': 150, 'test': 150}
+from math import comb
+
+maximum = 99
+n = maximum + 1
+print('Ordered pairs:', n ** 2)
+print('Unordered groups with repetition:', comb(n + 1, 2))
+assert comb(n + 1, 2) == n * (n + 1) // 2
+assert 4000 + 500 + 550 <= comb(n + 1, 2)
 ```
 
-Values are counts PER OPERATION, not total split sizes. There is no `--samples`
-option in the supplied generator.
+### Groups are not steps or epochs
 
-## 5. Current task distributions
+- Group: related input examples kept together when creating splits.
+- Example: one JSONL record, such as a single ordered addition problem.
+- Batch: examples processed together in one optimizer update.
+- Step: one optimizer update.
+- Epoch: one complete pass through the training examples.
 
-| Operation | Input distribution | Reference output |
-|---|---|---|
-| REVERSE | 3–8 independently sampled digits, including leading zeros and repeats | Digits in reverse order |
-| SORT | Same sequence distribution | Digits sorted in ascending order |
-| ADD | Two integers from 0–99 | Decimal sum |
-| SUB | Sample two integers from 0–99 and place the larger first | Nonnegative decimal difference |
-| MUL | Two integers from 0–99 | Decimal product |
-| DIV | Divisor 1–99, quotient 0–99; dividend = divisor × quotient | Exact integer quotient |
+For E training records and batch size B, an epoch has ceil(E/B) steps when the
+last partial batch is retained. There is no combinatorial cap on epochs: extra
+epochs reuse the same inputs and do not create new unique problems.
 
-For DIV the dividend can reach 9801. Division by zero and remainders are excluded.
-Arithmetic numbers have no leading zeros except the number zero itself.
-MUL is binary multiplication of two numbers, not multiplication of every digit
-in a sequence.
+## 6. Avoiding leakage and impossible requests
 
-Balanced task counts do not imply balanced difficulty. Under uniform 0–99 sampling,
-only about 1% of candidate ADD/MUL pairs have both operands below 10. Deduplication
-also changes the final distribution. Inspect actual records rather than assuming
-all lengths and carry patterns are evenly represented.
+The updated generator enumerates arithmetic groups, shuffles them, and partitions
+before expanding groups into records. Swapped ADD/MUL operands therefore cannot
+cross splits. The same operands under a different operation can cross splits,
+and repeated answer values across splits are expected.
 
-## 6. Avoiding leakage and understanding split limitations
+Generate all splits together. Independent seeds do not guarantee independent
+membership. Changing counts or ranges can change split membership; preserve
+existing validation/test and explicit exclusions for any online-data experiment.
 
-The generator keeps a single `seen` set across all three splits, keyed by the
-entire prompt. Therefore an identical instruction/input prompt cannot appear in
-multiple splits. Generate all splits together; generating train and validation
-independently with different seeds does not guarantee disjointness.
-
-This does not imply every example is unrelated to the other splits:
-
-- ADD 27 + 15 and ADD 15 + 27 are different prompts and can cross splits.
-- The same operands with a different operation can cross splits.
-- Different prompts can share the same answer; that is generally expected.
-
-For a stricter commutative evaluation, use a grouping key such as
-`(operation, min(a, b), max(a, b))` for ADD/MUL. For operand-level generalization,
-define groups or held-out operand ranges before generation.
-
-Current validation/test are held-out prompts from the same ranges. They do not
-measure transfer to longer numbers or sequence lengths outside 3–8.
-Create a separate out-of-distribution evaluation for those questions.
-
-### Finite support: do not request impossible counts
-
-The unique prompt space is finite. For example, SUB with 0 <= b <= a <= 99 has
-only 5,050 prompts; DIV has 99 × 100 = 9,900 divisor/quotient combinations.
-The sum requested across all splits must fit every operation's prompt space.
-
-The current rejection-sampling loop has no exhaustion guard and may run forever
-if counts are impossible. It also slows near exhaustion. For large datasets,
-enumerate finite arithmetic cases, shuffle them, and partition once, or increase
-the numeric range deliberately and add an attempt limit.
+The grouped generator rejects requests larger than the available arithmetic group
+space instead of looping forever. Sequence sampling also uses a bounded attempt
+count, with enumeration for small spaces. Default splits measure held-out inputs
+within configured ranges, not transfer to arbitrary lengths or a universal
+arithmetic algorithm. Use an untouched test set for final evaluation.
 
 ## 7. Batching variable-length examples
 
@@ -292,3 +365,166 @@ There are only 100 ordered one-digit addition inputs (0–9 for each operand), s
 this task cannot supply thousands of unique disjoint prompts. Repetition increases
 training exposure, not the number of unique problems. Hold out a meaningful subset
 or test transfer to a separately defined difficulty range.
+
+## 10. Worked example: four addends and arbitrary n
+
+Let N be the number of allowed values and n the fixed number of addends. With
+repetition allowed and all permutations placed in one group:
+
+\[
+G(N,n)=\binom{N+n-1}{n}=\frac{(N+n-1)!}{n!(N-1)!}.
+\]
+
+A group can be described by occurrence counts c_i for the N allowed values:
+
+\[
+c_0+\cdots+c_{N-1}=n,\quad c_i\geq0.
+\]
+
+The stars-and-bars argument counts these solutions: n stars representing
+occurrences, separated into N categories by N-1 bars. Choose n star positions
+among N+n-1 total positions.
+
+### Four addends from 0–99
+
+There are N=100 possible operand values:
+
+\[
+G(100,4)=\binom{103}{4}
+=\frac{103\cdot102\cdot101\cdot100}{4\cdot3\cdot2\cdot1}
+=4\,421\,275.
+\]
+
+Retaining order gives 100^4 = 100,000,000 tuples. Do NOT divide by 4! to get group
+counts: repeated operands make group sizes different.
+
+| Multiset | Distinct ordered inputs in its group |
+|---|---:|
+| {1,2,3,4} | 4! = 24 |
+| {1,1,2,3} | 4!/2! = 12 |
+| {1,1,2,2} | 4!/(2!2!) = 6 |
+| {1,1,1,2} | 4!/3! = 4 |
+| {1,1,1,1} | 1 |
+
+Generally, group size is n!/product_i(c_i!). Assign each whole group to one split
+before expanding its distinct permutations. Groups describe inputs, not distinct
+sum values: many different groups can have the same sum.
+
+If lengths 2 through n are allowed and lengths remain distinct, sum their counts:
+
+\[
+G_{2..n}=\sum_{k=2}^{n}\binom{N+k-1}{k}
+=\binom{N+n}{n}-1-N.
+\]
+
+For 0–99 and lengths 2 through 4:
+
+\[
+5\,050+171\,700+4\,421\,275=4\,598\,025.
+\]
+
+```python
+from math import comb
+N = 100
+assert comb(N + 4 - 1, 4) == 4_421_275
+assert sum(comb(N + k - 1, k) for k in range(2, 5)) == 4_598_025
+```
+
+The current generator implements binary arithmetic only. These formulas explain
+future extensions; they do not add n-operand support to the existing CLI.
+
+## 11. Mixed operations and parentheses require different counting rules
+
+The expression:
+
+\[
+1+3-2+(3\times5)/3=7
+\]
+
+has six operand occurrences and five binary operator nodes. Under standard
+precedence and left associativity its tree represents:
+
+\[
+((1+3)-2)+((3\times5)/3).
+\]
+
+The same combinations-with-repetition formula does NOT apply directly. Subtraction
+and division are not commutative; grouping also matters: 8-(3-1)=6, while
+(8-3)-1=4. ADD/MUL commutativity permits swapping children of those particular
+nodes, not arbitrary operands across the expression.
+
+First specify the grammar and group identity: exact syntax, a canonical expression
+tree, or a particular algebraic equivalence. Grouping by equal final answers is
+usually much broader than intended.
+
+### Fixed template
+
+For the fixed template ((a+b)-c)+((d*e)/f), each of six labeled slots has N choices.
+There are N^6 raw ordered assignments before validity checks: 100^6=10^12 for 0–99.
+If f must be nonzero but rational quotients are allowed, the count becomes
+N^5(N-1) for values 0..N-1. Requiring exact division or nonnegative answers adds
+coupled constraints: f must divide d*e, for example. These restrictions cannot be
+handled simply by the unordered-addend formula.
+
+### Flat expressions without parentheses
+
+For n ordered operand slots and K operator choices at each of n-1 positions,
+there are N^n K^(n-1) raw token sequences, assuming canonical numeric literals.
+Standard precedence defines their parse. This count includes invalid divisions
+and does not include every possible parenthesization.
+
+### All ordered binary tree shapes
+
+If every full binary tree shape with n leaves is allowed, each internal node
+has K possible operators, and each leaf has N values:
+
+\[
+E(N,n,K)=C_{n-1}K^{n-1}N^n,
+\qquad C_m=\frac{1}{m+1}\binom{2m}{m}.
+\]
+
+C_m is a Catalan number. The result counts ORDERED SYNTAX TREES, not algebraically
+distinct computations or arbitrary strings with redundant parentheses. Unary
+operators are excluded.
+
+For four operands, C_3=5. With four operators and values 0–99:
+
+\[
+E(100,4,4)=5\cdot4^3\cdot100^4=32\,000\,000\,000.
+\]
+
+This is a different count from the 4,421,275 unordered four-addend groups.
+It still includes undefined expressions. For example, 1/(2-2) divides by zero
+although neither denominator leaf is zero. Validity must be checked recursively.
+
+```python
+from math import comb
+
+def catalan(m):
+    return comb(2*m, m) // (m+1)
+
+assert catalan(3) == 5
+assert catalan(3) * 4**3 * 100**4 == 32_000_000_000
+```
+
+### A suitable future generator
+
+1. Generate bounded-size/depth abstract syntax trees (ASTs).
+2. Evaluate recursively with explicit operators, not eval on arbitrary strings.
+   Use exact rational arithmetic if rational intermediate values are allowed.
+3. Reject zero denominators and disallowed result/intermediate ranges. Specify
+   whether every division must be exact or only the final answer must be integer.
+4. Serialize with parentheses sufficient to preserve meaning.
+5. Normalize a group key, split groups, then generate their textual variants.
+
+A conservative key sorts child keys at ADD/MUL nodes and preserves order at
+SUB/DIV nodes. It removes direct commutative variants, but does not automatically
+cover associativity, distributivity or all algebraic equivalences. State the
+normalization's limits. For compositional-generalization tests, separately hold
+out tree shapes, depths or operator combinations.
+
+Mixed expressions also require an unambiguous input format, operator/parenthesis
+tokens as needed, a matching parser, and signed/fraction output tokens if supported.
+The current ADD instruction before two operands is not already an infix expression
+language. Check context and output limits for longer inputs. This section is a
+counting/design explanation, not implemented mixed-expression support.

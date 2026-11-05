@@ -14,6 +14,7 @@ from model import Transformer, Recurrent
 from data import BOS, SEP, EOS
 from loader import load, collate
 from plots import plot_learning_curves
+from early_stopping import EarlyStopping
 
 
 @torch.no_grad()
@@ -84,54 +85,103 @@ def save_checkpoint(path, model, config, args, step, metrics):
 
 
 def train(model, optimizer, train_loader, val_rows, config, args, out):
-    """Coordinate updates, evaluation, logging and checkpoint selection."""
+    """Evaluate each completed epoch; restore the selected best model on exit."""
     if len(train_loader) == 0 or not val_rows:
         raise ValueError('Training and validation datasets must be nonempty')
-    train_iter = iter(train_loader)
-    best_val_loss, best_exact = float('inf'), -1.0
+    stopper = EarlyStopping(
+        mode='min' if args.monitor == 'val_loss' else 'max',
+        min_epochs=args.min_epochs, patience=args.patience,
+        min_delta=args.min_delta,
+    )
+    best_loss, best_exact = float('inf'), -1.0
     start = time.perf_counter()
-    metrics = {}
+    step = 0
+    reason = 'max_epochs'
+    history = []
+    selected_name = 'best-loss.pt' if args.monitor == 'val_loss' else 'best-exact.pt'
     with (out / 'metrics.csv').open('w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['step', 'train_loss', 'val_loss',
                          'teacher_token_accuracy', 'free_exact_match',
-                         'grad_norm', 'seconds'])
-        for step in range(1, args.steps + 1):
-            try:
-                x, y = next(train_iter)
-            except StopIteration:
-                train_iter = iter(train_loader)
-                x, y = next(train_iter)
-            train_loss, norm = train_step(
-                model, optimizer, x.to(args.device), y.to(args.device),
-            )
-            if step != 1 and step % 100 != 0 and step != args.steps:
-                continue
-            vl, acc, exact = evaluate(model, val_rows, args.device,
-                                      batch_size=args.batch)
-            metrics = dict(val_loss=vl, token_accuracy=acc, exact_match=exact)
-            writer.writerow([step, train_loss, vl, acc, exact, norm,
-                             time.perf_counter() - start])
+                         'grad_norm', 'seconds', 'epoch', 'train_eval_loss',
+                         'train_eval_token_accuracy', 'train_eval_exact_match'])
+        for epoch in range(1, args.epochs + 1):
+            weighted_loss, tokens, norm = 0.0, 0, 0.0
+            for x, y in train_loader:
+                loss, norm = train_step(
+                    model, optimizer, x.to(args.device), y.to(args.device))
+                n = int((y != -100).sum())
+                weighted_loss += loss * n
+                tokens += n
+                step += 1
+            vl, acc, exact = evaluate(
+                model, val_rows, args.device, batch_size=args.batch,
+                exact_samples=args.exact_samples)
+            # A fixed training subset is measured without dropout, just like validation.
+            train_rows = train_loader.dataset
+            subset = random.Random(43).sample(
+                train_rows, min(args.train_eval_samples, len(train_rows)))
+            tl, ta, te = evaluate(model, subset, args.device,
+                                  batch_size=args.batch,
+                                  exact_samples=args.exact_samples)
+            metrics = dict(epoch=epoch, val_loss=vl,
+                           token_accuracy=acc, exact_match=exact,
+                           train_eval_loss=tl, train_eval_token_accuracy=ta,
+                           train_eval_exact_match=te)
+            writer.writerow([step, weighted_loss / tokens, vl, acc, exact,
+                             norm, time.perf_counter()-start, epoch, tl, ta, te])
             f.flush()
-            print(f'{step:5} train={train_loss:.3f} val={vl:.3f} '
-                  f'token={acc:.1%} exact={exact:.1%}')
-            if vl < best_val_loss:
-                best_val_loss = vl
-                save_checkpoint(out / 'best-loss.pt', model, config, args,
-                                step, metrics)
+            # Checkpoint selection tracks every strict improvement, independently
+            # of min_delta used for significant-progress detection.
+            if vl < best_loss:
+                best_loss = vl
+                save_checkpoint(out / 'best-loss.pt', model, config, args, step, metrics)
             if exact > best_exact:
                 best_exact = exact
-                save_checkpoint(out / 'best-exact.pt', model, config, args,
-                                step, metrics)
-    save_checkpoint(out / 'model.pt', model, config, args, args.steps, metrics)
+                save_checkpoint(out / 'best-exact.pt', model, config, args, step, metrics)
+            should_stop = stopper.update(
+                vl if args.monitor == 'val_loss' else exact, epoch)
+            history.append(dict(epoch=epoch, step=step, monitor_value=(
+                vl if args.monitor == 'val_loss' else exact),
+                bad_epochs=stopper.bad_epochs))
+            print(f'epoch={epoch:3} step={step:6} train={weighted_loss/tokens:.3f} '
+                  f'val={vl:.3f} token={acc:.1%} exact={exact:.1%} '
+                  f'no_improvement={stopper.bad_epochs}/{args.patience}')
+            if not args.no_early_stopping and should_stop:
+                reason = 'early_stopping'
+                break
+    # Keep actual terminal weights, then restore the selected validation checkpoint.
+    save_checkpoint(out / 'last.pt', model, config, args, step, metrics)
+    best = torch.load(out / selected_name, map_location=args.device, weights_only=True)
+    model.load_state_dict(best['state'])
+    model.eval()
+    best['selected_by'] = args.monitor
+    best['restored_from'] = selected_name
+    torch.save(best, out / 'model.pt')
+    summary = dict(stop_reason=reason, stopped_epoch=epoch, total_steps=step,
+                   selected_checkpoint=selected_name,
+                   selected_epoch=best['epoch'], selected_step=best['step'],
+                   best_val_loss=best_loss, best_exact_match=best_exact,
+                   min_delta_reference=stopper.best, history=history,
+                   model_pt='Restored best validation weights',
+                   last_pt='Weights at the final executed epoch')
+    (out / 'training-summary.json').write_text(json.dumps(summary, indent=2))
+    print(f'Stopped: {reason}; restored {selected_name}, epoch {best["epoch"]}')
     print('Saved:', plot_learning_curves(out))
-    return metrics
+    return summary
 
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--model', choices=['transformer', 'rnn', 'lstm'], default='transformer')
-    p.add_argument('--steps', type=int, default=2000)
+    p.add_argument('--epochs', type=int, default=100)
+    p.add_argument('--min-epochs', type=int, default=20)
+    p.add_argument('--patience', type=int, default=5)
+    p.add_argument('--min-delta', type=float, default=0.001)
+    p.add_argument('--monitor', choices=['val_loss', 'exact'], default='val_loss')
+    p.add_argument('--no-early-stopping', action='store_true')
+    p.add_argument('--exact-samples', type=int, default=120)
+    p.add_argument('--train-eval-samples', type=int, default=256)
     p.add_argument('--batch', type=int, default=64)
     p.add_argument('--dim', type=int, default=64)
     p.add_argument('--heads', type=int, default=4)
@@ -145,8 +195,10 @@ def parse_args():
     p.add_argument('--no-mask', action='store_true')
     p.add_argument('--out', default='runs/instructions')
     a = p.parse_args()
-    if min(a.steps, a.batch, a.threads, a.dim, a.heads, a.layers) < 1:
-        p.error('steps, batch, threads, dim, heads and layers must be positive')
+    if min(a.epochs, a.min_epochs, a.patience, a.exact_samples, a.train_eval_samples, a.batch, a.threads, a.dim, a.heads, a.layers) < 1:
+        p.error('Epochs, patience, sample counts and model dimensions must be positive')
+    if a.min_epochs > a.epochs or a.min_delta < 0:
+        p.error('Require min-epochs <= epochs and min-delta >= 0')
     if a.model == 'transformer' and a.dim % a.heads:
         p.error('dim must be divisible by heads')
     if a.lr <= 0 or not 0 <= a.dropout < 1:
