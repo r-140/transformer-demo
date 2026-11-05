@@ -8,13 +8,14 @@ from pathlib import Path
 
 import torch
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from model import Transformer, Recurrent
 from data import BOS, SEP, EOS
 from loader import load, collate
 from plots import plot_learning_curves
 from early_stopping import EarlyStopping
+from sampling import balanced_weights
 
 
 @torch.no_grad()
@@ -182,6 +183,8 @@ def parse_args():
     p.add_argument('--no-early-stopping', action='store_true')
     p.add_argument('--exact-samples', type=int, default=120)
     p.add_argument('--train-eval-samples', type=int, default=256)
+    p.add_argument('--balance-lengths', action='store_true',
+                   help='Balance arithmetic operand digit-length buckets in training only')
     p.add_argument('--batch', type=int, default=64)
     p.add_argument('--dim', type=int, default=64)
     p.add_argument('--heads', type=int, default=4)
@@ -220,11 +223,24 @@ def main():
     val_rows = load('data/validation.jsonl')
     if not rows or not val_rows:
         raise ValueError('Training and validation datasets must be nonempty')
-    train_loader = DataLoader(rows, batch_size=args.batch, shuffle=True,
+    sampler, sampling_report = None, None
+    if args.balance_lengths:
+        weights, sampling_report = balanced_weights(rows)
+        sampler = WeightedRandomSampler(
+            weights, num_samples=len(rows), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed + 1),
+        )
+        print('Training sampler: balanced operand lengths (with replacement)')
+        for bucket in sampling_report:
+            print(' ', bucket)
+    train_loader = DataLoader(rows, batch_size=args.batch,
+                              shuffle=sampler is None, sampler=sampler,
                               collate_fn=collate)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'config.json').write_text(json.dumps(vars(args), indent=2))
+    if sampling_report is not None:
+        (out / 'sampling.json').write_text(json.dumps(sampling_report, indent=2))
     print('Parameters:', sum(p.numel() for p in model.parameters()))
     train(model, optimizer, train_loader, val_rows, config, args, out)
 

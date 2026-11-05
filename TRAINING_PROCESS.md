@@ -1,6 +1,6 @@
 # Training by Epochs with Early Stopping
 
-Copy train.py, early_stopping.py, and plots.py to the project root. Keep your
+Copy train.py, early_stopping.py, plots.py, and sampling.py to the project root. Keep your
 existing model.py, data.py and loader.py. Vocabulary and JSONL format are unchanged.
 
 ```bash
@@ -10,7 +10,8 @@ python3 train.py --epochs 100 --min-epochs 20 --patience 5 --min-delta 0.001 --m
 ## Workflow
 
 1. main constructs the model, AdamW optimizer and shuffled training DataLoader.
-2. Each epoch processes every training example once in mini-batches.
+2. By default each epoch processes every training example once in mini-batches.
+   With --balance-lengths it draws the same number of records with replacement.
 3. train_step clears gradients, predicts logits, computes cross entropy over answer
    tokens and EOS, runs backward, clips gradients to norm 1 and updates weights.
 4. At epoch end, evaluate validation without dropout or gradients. Test is never
@@ -26,7 +27,9 @@ early-stopping decisions and plotting by responsibility.
 ## Epochs replace steps
 
 --epochs replaces the old --steps CLI option. One epoch is one full training-set
-pass, including the last smaller batch. step in the CSV still counts updates.
+pass, including the last smaller batch. With length balancing, an epoch instead
+means len(training_records) weighted draws with replacement: some records repeat
+and others are not selected during that epoch. step in the CSV still counts updates.
 The number of updates per epoch is ceil(number_of_records / batch_size).
 Every invocation starts from scratch; resume is not implemented.
 
@@ -187,3 +190,61 @@ into training. Once a finite arithmetic input space is exhausted, another shuffl
 adds no unique problems. Preserve dataset versions when comparing new examples.
 The existing generator can prepare a new dataset for a new controlled run, but
 there is no automatic plateau-triggered regeneration in this update.
+
+## Balance operand lengths during training
+
+For an ADD dataset with values 0..199, uniformly sampling records makes
+short operands rare. Enable training-only balancing without regenerating data:
+
+```bash
+python3 train.py --balance-lengths --out runs/add-balanced
+```
+
+Copy the updated `train.py` and new `sampling.py` into the project root; retain
+`early_stopping.py`, `plots.py`, `model.py`, `data.py`, and `loader.py`.
+The flag is off by default, so the old experiment remains reproducible:
+
+```bash
+python3 train.py --out runs/add
+```
+
+A bucket is `(operation, ordered operand digit lengths)`. For example, ADD 8+7
+belongs to (ADD,1,1), 8+92 to (ADD,1,2), and 92+8 to (ADD,2,1). Zero has one
+digit. Multiple operands are supported. Within each arithmetic operation, all
+observed buckets receive equal expected sampling mass. Missing buckets cannot
+be invented. Sequence tasks keep their existing distribution, and each operation
+retains its original expected proportion of training draws.
+
+If an operation has N records across K observed buckets and a bucket contains
+n records, each record receives weight `N/(K*n)`. WeightedRandomSampler draws
+with replacement. An epoch contains exactly len(train_records) draws, so the
+number of optimizer updates remains unchanged; bucket counts fluctuate around
+their expectations. Rare examples repeat more often. The sampler uses its own
+seeded generator, advances across epochs, and saves bucket counts, weights and
+expected draws in `sampling.json`. The flag is saved in `config.json`.
+
+Only training records determine the weights. Validation, test and the fixed
+train-eval subset are not reweighted. Training loss now describes the sampled
+distribution; it is not directly comparable to the old unweighted epoch loss.
+Compare validation metrics and bucket rates instead. Equal bucket weighting
+changes the objective and may trade performance between short and long numbers;
+it does not guarantee an improvement and can overfit a very small bucket.
+
+Use a new run directory: this command starts a fresh model, not fine-tuning.
+Choose experiments/checkpoints on validation data. Your previously inspected
+test set is now diagnostic development data; reserve a fresh held-out test set
+before further tuning if you need an independent final estimate. Never move
+held-out pairs or their swapped equivalents into training.
+
+After training, the separately supplied evaluation scripts work unchanged:
+
+```bash
+python3 evaluate_test.py runs/add-balanced
+python3 analyze_errors.py runs/add-balanced/test-evaluation
+```
+
+Verification for this update: two new unit tests verify equal bucket mass,
+preserved operation mass, unchanged sequence weights, zero handling, ordered
+lengths and empty-data rejection. All six sampling/early-stopping tests passed,
+and the changed modules compiled. Full PyTorch training was not executed in the
+current delivery environment because PyTorch is unavailable.
