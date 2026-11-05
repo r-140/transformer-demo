@@ -210,7 +210,7 @@ python3 train.py --out runs/add
 
 A bucket is `(operation, ordered operand digit lengths)`. For example, ADD 8+7
 belongs to (ADD,1,1), 8+92 to (ADD,1,2), and 92+8 to (ADD,2,1). Zero has one
-digit. Multiple operands are supported. Within each arithmetic operation, all
+digit. Multiple operands are supported. At --balance-strength 1 (the default), within each arithmetic operation all
 observed buckets receive equal expected sampling mass. Missing buckets cannot
 be invented. Sequence tasks keep their existing distribution, and each operation
 retains its original expected proportion of training draws.
@@ -248,3 +248,37 @@ preserved operation mass, unchanged sequence weights, zero handling, ordered
 lengths and empty-data rejection. All six sampling/early-stopping tests passed,
 and the changed modules compiled. Full PyTorch training was not executed in the
 current delivery environment because PyTorch is unavailable.
+
+### Soft balancing: configurable mixture
+
+```bash
+python3 train.py --balance-lengths --balance-strength 0.2 --out runs/add-balanced-20
+```
+
+`--balance-strength` accepts finite values in [0,1]. The default is 1.0 to
+preserve the previous full-balancing experiment. The flag `--balance-lengths`
+enables the weighted sampler; without it training uses ordinary shuffled passes.
+A non-default strength without that flag is rejected to prevent silent no-ops.
+
+| Strength | Distribution |
+|---:|---|
+| 0 | Uniform records, with replacement |
+| 0.2 | 80% uniform records + 20% balanced length buckets |
+| 1 | Fully balanced length buckets |
+
+Each record receives `weight = (1-strength) + strength * balanced_weight`.
+Since balanced weights sum to the original record count, this is an exact
+probability mixture. Expected bucket draws become
+`(1-strength)*bucket_record_count + strength*operation_record_count/bucket_count`.
+The printed report and `sampling.json` now contain these actual mixed weights,
+expected draws and strength; `config.json` also records the CLI value.
+Strength 0 still samples with replacement, so it is not the same schedule as
+ordinary shuffle without `--balance-lengths`.
+
+Replace both `train.py` and `sampling.py`. Do not retain the temporary hardcoded
+`balance_strength = 0.2` snippet: mixing is now performed once inside
+`balanced_weights()`. This command starts from scratch in a separate run folder.
+
+Verification: all seven sampling and early-stopping tests passed, including
+mixture endpoints, expected bucket draws and invalid/nonfinite strengths.
+Changed modules passed compilation. PyTorch training was not executed here.

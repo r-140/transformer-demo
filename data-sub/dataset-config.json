@@ -1,0 +1,38 @@
+{
+  "operations": [
+    "SUB"
+  ],
+  "max_data": true,
+  "operands": 2,
+  "validation_ratio": 0.15,
+  "test_ratio": 0.15,
+  "max_examples": 1000000,
+  "out": "data",
+  "seed": 42,
+  "train": 1000,
+  "validation": 150,
+  "test": 150,
+  "max_number": 199,
+  "max_quotient": 99,
+  "min_length": 3,
+  "max_length": 8,
+  "context": 64,
+  "overwrite": true,
+  "available_groups": {
+    "SUB": 20100
+  },
+  "split_groups": {
+    "SUB": {
+      "train": 14070,
+      "validation": 3015,
+      "test": 3015
+    }
+  },
+  "count_unit": "groups per operation; ADD/MUL groups include all distinct operand permutations",
+  "vocab": 19,
+  "split_examples": {
+    "train": 14070,
+    "validation": 3015,
+    "test": 3015
+  }
+}

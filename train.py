@@ -185,6 +185,8 @@ def parse_args():
     p.add_argument('--train-eval-samples', type=int, default=256)
     p.add_argument('--balance-lengths', action='store_true',
                    help='Balance arithmetic operand digit-length buckets in training only')
+    p.add_argument('--balance-strength', type=float, default=1.0,
+                   help='Mixture strength in [0,1]; requires --balance-lengths (default: 1)')
     p.add_argument('--batch', type=int, default=64)
     p.add_argument('--dim', type=int, default=64)
     p.add_argument('--heads', type=int, default=4)
@@ -200,6 +202,10 @@ def parse_args():
     a = p.parse_args()
     if min(a.epochs, a.min_epochs, a.patience, a.exact_samples, a.train_eval_samples, a.batch, a.threads, a.dim, a.heads, a.layers) < 1:
         p.error('Epochs, patience, sample counts and model dimensions must be positive')
+    if not 0 <= a.balance_strength <= 1:
+        p.error('balance-strength must be finite and between 0 and 1')
+    if not a.balance_lengths and a.balance_strength != 1.0:
+        p.error('--balance-strength requires --balance-lengths')
     if a.min_epochs > a.epochs or a.min_delta < 0:
         p.error('Require min-epochs <= epochs and min-delta >= 0')
     if a.model == 'transformer' and a.dim % a.heads:
@@ -225,12 +231,13 @@ def main():
         raise ValueError('Training and validation datasets must be nonempty')
     sampler, sampling_report = None, None
     if args.balance_lengths:
-        weights, sampling_report = balanced_weights(rows)
+        weights, sampling_report = balanced_weights(rows, strength=args.balance_strength)
         sampler = WeightedRandomSampler(
             weights, num_samples=len(rows), replacement=True,
             generator=torch.Generator().manual_seed(args.seed + 1),
         )
-        print('Training sampler: balanced operand lengths (with replacement)')
+        print(f'Training sampler: length mixture, strength={args.balance_strength:g} '
+              '(with replacement)')
         for bucket in sampling_report:
             print(' ', bucket)
     train_loader = DataLoader(rows, batch_size=args.batch,

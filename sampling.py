@@ -1,5 +1,6 @@
 """Training-only balancing of operand digit-length buckets."""
 from collections import Counter
+import math
 
 
 def length_bucket(row):
@@ -13,22 +14,27 @@ def length_bucket(row):
     return op, None
 
 
-def balanced_weights(rows):
-    """Equalize observed length buckets within each arithmetic operation.
+def balanced_weights(rows, strength=1.0):
+    """Mix uniform-record and balanced-length distributions within each operation.
+
+    strength=0 is uniform records; strength=1 equalizes observed buckets.
 
     Total sampling weight per operation remains its original record count.
     No held-out data is read and no new examples are created.
     """
+    if not math.isfinite(strength) or not 0 <= strength <= 1:
+        raise ValueError('balance strength must be finite and between 0 and 1')
     if not rows:
         raise ValueError('Cannot balance an empty training set')
     keys = [length_bucket(row) for row in rows]
     counts = Counter(keys)
     op_counts = Counter(row['operation'] for row in rows)
     bucket_counts = Counter(op for op, _ in counts)
-    weights = [op_counts[op] / (bucket_counts[op] * counts[key])
+    weights = [(1 - strength) + strength * op_counts[op] / (bucket_counts[op] * counts[key])
                for key in keys for op in [key[0]]]
     report = [dict(operation=op, operand_lengths=list(lengths) if lengths else None,
-                   records=count, per_record_weight=op_counts[op]/(bucket_counts[op]*count),
-                   expected_draws_per_epoch=op_counts[op]/bucket_counts[op])
+                   records=count, balance_strength=strength,
+                   per_record_weight=(1-strength)+strength*op_counts[op]/(bucket_counts[op]*count),
+                   expected_draws_per_epoch=(1-strength)*count+strength*op_counts[op]/bucket_counts[op])
               for (op, lengths), count in sorted(counts.items())]
     return weights, report
