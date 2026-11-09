@@ -68,7 +68,8 @@ def analyze(rows):
             if tag != 'correct':
                 examples[tag].append(dict(index=row['index'], expression=row['expression'],
                     expected=row['derivative'], prediction=row['result'].get('prediction'),
-                    status=row['result']['status'], case=case, tags=tags))
+                    status=row['result']['status'], numbers=row['result'].get('numbers'),
+                    raw_prediction=row['result'].get('raw_prediction'),case=case, tags=tags))
     return dict(examples=len(rows), correct=counts['correct'],
                 errors=len(rows)-counts['correct'], categories=dict(counts),
                 input_cases=dict(cases), error_examples=dict(examples))

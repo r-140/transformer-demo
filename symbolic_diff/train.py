@@ -246,6 +246,9 @@ def main():
         raise ValueError('Dataset exceeds context capacity')
     if not rows or not val_rows:
         raise ValueError('Training and validation datasets must be nonempty')
+    forms = {r.get('target_form', 'evaluated') for r in rows+val_rows if r.get('task')=='DIFF'}
+    if len(forms)!=1:raise ValueError('Use one derivative target form per run')
+    args.target_form = next(iter(forms))
     train_loader = DataLoader(rows, batch_size=args.batch, shuffle=True,
                               collate_fn=collate)
     out = Path(args.out)

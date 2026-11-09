@@ -1,0 +1,37 @@
+{
+  "source": "/home/ilya/python_workspace/transformer-demo/symbolic_diff/data-monomials",
+  "target_form": "factored",
+  "vocabulary": [
+    "BOS",
+    "SEP",
+    "EOS",
+    "PAD",
+    "DIFF",
+    "x",
+    "ADD",
+    "MUL",
+    "POW",
+    "SIN",
+    "COS",
+    "EXP",
+    "NUM",
+    "END",
+    "-",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9"
+  ],
+  "counts": {
+    "train": 1000,
+    "validation": 150,
+    "test": 150
+  },
+  "rule": "For n>0: MUL MUL NUM(a) NUM(n) POW x NUM(n-1); constants: NUM(0)"
+}

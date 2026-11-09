@@ -60,3 +60,7 @@ a two-versus-four-layer comparison and the corrected polynomial equivalence chec
 
 See [COEFFICIENT_CURRICULUM.md](COEFFICIENT_CURRICULUM.md) for auxiliary
 multiplication, held-out pair exclusions and checkpoint fine-tuning.
+
+
+See [FACTORED_TARGETS.md](FACTORED_TARGETS.md) for unevaluated products, structural
+versus mathematical checking, and numeric coefficient diagnostics.

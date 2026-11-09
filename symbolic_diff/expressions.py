@@ -34,7 +34,7 @@ def prefix(expr):
     raise ValueError(f'Unsupported expression: {expr}')
 
 
-def parse(tokens):
+def parse(tokens, evaluate=True):
     """Parse one complete expression; reject malformed/trailing/oversized input."""
     if isinstance(tokens,str): tokens=tokens.split()
     if not tokens or len(tokens)>256: raise ValueError('Require 1..256 tokens')
@@ -57,13 +57,14 @@ def parse(tokens):
                 raise ValueError('Invalid integer literal')
             return sp.Integer(raw)
         if t in ('SIN','COS','EXP'):
-            return {'SIN':sp.sin,'COS':sp.cos,'EXP':sp.exp}[t](read(depth+1))
+            return {'SIN':sp.sin,'COS':sp.cos,'EXP':sp.exp}[t](read(depth+1), evaluate=evaluate)
         if t in ('ADD','MUL','POW'):
             a,b=read(depth+1),read(depth+1)
             if t=='POW':
                 if not b.is_Integer or not 0<=b<=12:raise ValueError('Power must be integer 0..12')
-                return a**b
-            return a+b if t=='ADD' else a*b
+                return sp.Pow(a,b,evaluate=evaluate)
+            return (sp.Add(a,b,evaluate=evaluate) if t=='ADD'
+                    else sp.Mul(a,b,evaluate=evaluate))
         raise ValueError(f'Unknown expression token: {t}')
     result=read()
     if pos!=len(tokens):raise ValueError('Trailing tokens')
@@ -90,14 +91,28 @@ def equivalent(candidate, reference):
     return 'unresolved'
 
 
-def build_record(expr):
+def factored_derivative_prefix(expr):
+    """Construct target tokens directly, before SymPy can multiply coefficients."""
+    poly=sp.Poly(expr,X)
+    if poly.is_zero:return prefix(sp.Integer(0))
+    if len(poly.terms())!=1:raise ValueError('Factored targets require a monomial')
+    (n,),a=poly.terms()[0]
+    if not a.is_Integer:raise ValueError('Integer coefficient required')
+    if n==0:return prefix(sp.Integer(0))
+    return (['MUL','MUL']+prefix(a)+prefix(sp.Integer(n))+
+            ['POW','x']+prefix(sp.Integer(n-1)))
+
+
+def build_record(expr, target_form='evaluated'):
     # Canonicalize polynomial structure; this is not complete equivalence detection.
     expr=sp.expand(expr)
     derivative=sp.expand(sp.diff(expr,X))
-    source,target=prefix(expr),prefix(derivative)
+    if target_form not in ('evaluated','factored'):raise ValueError('Unknown target form')
+    source=prefix(expr)
+    target=factored_derivative_prefix(expr) if target_form=='factored' else prefix(derivative)
     prompt=encode(['BOS','DIFF']+source+['SEP'])
     answer=encode(target+['EOS'])
-    return dict(task='DIFF',expression=str(expr),derivative=str(derivative),
+    return dict(task='DIFF',target_form=target_form,expression=str(expr),derivative=str(derivative),
                 expression_prefix=' '.join(source),derivative_prefix=' '.join(target),
                 group=signature(expr),canonical_key=sp.srepr(expr),
                 prompt_ids=prompt,answer_ids=answer,

@@ -26,9 +26,10 @@ def main():
         counts[result['status']]+=1;exact+=result['exact']
         predictions.append(dict(index=index,expression=row['expression'],
             derivative=row['derivative'],expression_prefix=row['expression_prefix'],
-            derivative_prefix=row['derivative_prefix'],result=result))
+            derivative_prefix=row['derivative_prefix'],target_form=row.get('target_form','evaluated'),result=result))
     report=dict(examples=len(rows),exact_match=exact/len(rows),
-                proved_equivalent=counts['equivalent']/len(rows),statuses=dict(counts))
+                proved_equivalent=counts['equivalent']/len(rows),
+                structure_exact_match=exact/len(rows),statuses=dict(counts))
     report.update(data=str(Path(a.data).resolve()),checkpoint=str((Path(a.run)/a.checkpoint).resolve()))
     out=Path(a.out) if a.out else Path(a.run)/'derivative-evaluation'
     out.mkdir(parents=True,exist_ok=True)
