@@ -48,3 +48,9 @@ SymPy computes reference derivatives BEFORE training. During generation the mode
 receives only the function prompt. SymPy is used again AFTER generation to check
 the answer, not to supply missing answer tokens. This is a teaching experiment,
 not a replacement for a production computer algebra system.
+
+
+## Simpler starting point: monomials
+
+See [MONOMIALS.md](MONOMIALS.md) for the finite monomial generator,
+a two-versus-four-layer comparison and the corrected polynomial equivalence check.

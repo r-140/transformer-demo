@@ -8,18 +8,18 @@ from pathlib import Path
 
 import torch
 from torch.nn import functional as F
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 
 from model import Transformer, Recurrent
 from data import BOS, SEP, EOS
 from loader import load, collate
 from plots import plot_learning_curves
 from early_stopping import EarlyStopping
-from sampling import balanced_weights
+from expressions import VOCAB, TOKENS
 
 
 @torch.no_grad()
-def generate_answer(model, prompt_ids, max_new_tokens=16):
+def generate_answer(model, prompt_ids, max_new_tokens=96):
     device = next(model.parameters()).device
     ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     answer = []
@@ -183,10 +183,6 @@ def parse_args():
     p.add_argument('--no-early-stopping', action='store_true')
     p.add_argument('--exact-samples', type=int, default=120)
     p.add_argument('--train-eval-samples', type=int, default=256)
-    p.add_argument('--balance-lengths', action='store_true',
-                   help='Balance arithmetic operand digit-length buckets in training only')
-    p.add_argument('--balance-strength', type=float, default=1.0,
-                   help='Mixture strength in [0,1]; requires --balance-lengths (default: 1)')
     p.add_argument('--batch', type=int, default=64)
     p.add_argument('--dim', type=int, default=64)
     p.add_argument('--heads', type=int, default=4)
@@ -198,14 +194,12 @@ def parse_args():
     p.add_argument('--threads', type=int, default=2)
     p.add_argument('--no-positions', action='store_true')
     p.add_argument('--no-mask', action='store_true')
-    p.add_argument('--out', default='runs/instructions')
+    p.add_argument('--context', type=int, default=192)
+    p.add_argument('--data', default='data')
+    p.add_argument('--out', default='runs/differentiation')
     a = p.parse_args()
     if min(a.epochs, a.min_epochs, a.patience, a.exact_samples, a.train_eval_samples, a.batch, a.threads, a.dim, a.heads, a.layers) < 1:
         p.error('Epochs, patience, sample counts and model dimensions must be positive')
-    if not 0 <= a.balance_strength <= 1:
-        p.error('balance-strength must be finite and between 0 and 1')
-    if not a.balance_lengths and a.balance_strength != 1.0:
-        p.error('--balance-strength requires --balance-lengths')
     if a.min_epochs > a.epochs or a.min_delta < 0:
         p.error('Require min-epochs <= epochs and min-delta >= 0')
     if a.model == 'transformer' and a.dim % a.heads:
@@ -219,35 +213,26 @@ def main():
     args = parse_args()
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
-    config = dict(vocab=19, dim=args.dim, heads=args.heads, layers=args.layers,
+    config = dict(vocab=VOCAB, max_len=args.context, dim=args.dim, heads=args.heads, layers=args.layers,
                   dropout=args.dropout, positions=not args.no_positions,
                   causal=not args.no_mask)
     model = (Transformer(**config) if args.model == 'transformer'
              else Recurrent(kind=args.model, **config)).to(args.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
-    rows = load('data/train.jsonl')
-    val_rows = load('data/validation.jsonl')
+    rows = load(Path(args.data) / 'train.jsonl')
+    val_rows = load(Path(args.data) / 'validation.jsonl')
+    if any(len(r['prompt_ids'])+96-1 > args.context for r in rows+val_rows):
+        raise ValueError('Context must allow prompt plus 95 generated prefix tokens; increase --context')
+    if any(len(r['input_ids']) > args.context for r in rows+val_rows):
+        raise ValueError('Dataset exceeds context capacity')
     if not rows or not val_rows:
         raise ValueError('Training and validation datasets must be nonempty')
-    sampler, sampling_report = None, None
-    if args.balance_lengths:
-        weights, sampling_report = balanced_weights(rows, strength=args.balance_strength)
-        sampler = WeightedRandomSampler(
-            weights, num_samples=len(rows), replacement=True,
-            generator=torch.Generator().manual_seed(args.seed + 1),
-        )
-        print(f'Training sampler: length mixture, strength={args.balance_strength:g} '
-              '(with replacement)')
-        for bucket in sampling_report:
-            print(' ', bucket)
-    train_loader = DataLoader(rows, batch_size=args.batch,
-                              shuffle=sampler is None, sampler=sampler,
+    train_loader = DataLoader(rows, batch_size=args.batch, shuffle=True,
                               collate_fn=collate)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'config.json').write_text(json.dumps(vars(args), indent=2))
-    if sampling_report is not None:
-        (out / 'sampling.json').write_text(json.dumps(sampling_report, indent=2))
+    (out / 'vocabulary.json').write_text(json.dumps(TOKENS, indent=2))
     print('Parameters:', sum(p.numel() for p in model.parameters()))
     train(model, optimizer, train_loader, val_rows, config, args, out)
 

@@ -26,7 +26,9 @@ def expression(rng,stage):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument('--stage',choices=['polynomials','compositions'],default='polynomials')
+    p.add_argument('--stage',choices=['monomials','polynomials','compositions'],default='polynomials')
+    p.add_argument('--max-coefficient',type=int,default=199,help='Monomial |a| maximum')
+    p.add_argument('--max-power',type=int,default=5,help='Monomial exponent maximum')
     p.add_argument('--split',choices=['random','structure'],default='random')
     p.add_argument('--train',type=int,default=1000)
     p.add_argument('--validation',type=int,default=150)
@@ -37,15 +39,29 @@ def main():
     p.add_argument('--overwrite',action='store_true')
     a=p.parse_args()
     if min(a.train,a.validation,a.test)<1 or a.context<8:p.error('Positive split sizes and context >= 8 required')
+    candidates = None
+    if a.stage == 'monomials':
+        if not 1 <= a.max_coefficient <= 999 or not 1 <= a.max_power <= 12:
+            p.error('Monomials require coefficient 1..999 and power 1..12')
+        if a.split != 'random':
+            p.error('Use random split for monomials; structure holdout is a separate experiment')
+        candidates = [sp.Integer(0)] + [c*X**n
+            for c in range(-a.max_coefficient,a.max_coefficient+1) if c
+            for n in range(a.max_power+1)]
+        if a.train+a.validation+a.test > len(candidates):
+            p.error(f'Monomial capacity is {len(candidates)} unique functions; reduce split sizes')
     out=Path(a.out)
     if out.exists() and any(out.iterdir()) and not a.overwrite:p.error('Output directory is not empty; use --overwrite')
     quotas=dict(train=a.train,validation=a.validation,test=a.test)
     rows={s:[] for s in quotas};seen=set();rejected=Counter();rng=random.Random(a.seed)
     total=sum(quotas.values());limit=max(10000,total*100)
+    if candidates is not None:
+        rng.shuffle(candidates)
+        limit = len(candidates)
     for attempt in range(limit):
         if all(len(rows[s])==n for s,n in quotas.items()):break
         try:
-            row=build_record(expression(rng,a.stage))
+            row=build_record(candidates[attempt] if candidates is not None else expression(rng,a.stage))
         except ValueError:
             rejected['unsupported_after_simplification']+=1;continue
         if len(row['input_ids'])>a.context or len(row['answer_ids'])>96:
@@ -61,6 +77,7 @@ def main():
         if len(rows[split])==quotas[split]:
             rejected['full_split']+=1;continue
         seen.add(row['canonical_key']);rows[split].append(row)
+        if all(len(rows[s])==n for s,n in quotas.items()):break
     else:
         p.error(f'Attempt limit reached: {[ (s,len(v)) for s,v in rows.items() ]}; reduce quotas or use compositions')
     out.mkdir(parents=True,exist_ok=True)

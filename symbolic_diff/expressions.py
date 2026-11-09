@@ -84,6 +84,8 @@ def equivalent(candidate, reference):
     """Three outcomes: symbolic equality, definite inequality, or unresolved."""
     delta=sp.simplify(sp.expand(candidate-reference))
     if delta==0:return 'equivalent'
+    if delta.is_polynomial(X):
+        return 'equivalent' if sp.Poly(delta, X).is_zero else 'different'
     if delta.is_zero is False:return 'different'
     return 'unresolved'
 

@@ -1,112 +1,56 @@
-# Transformer Lab: Learn the Architecture Through Experiments
+# Symbolic Differentiation Lab
 
-A small decoder-only Transformer implemented in PyTorch without `nn.Transformer`.
-It runs on a CPU and generates its training data locally; no dataset download is required.
-Documentation and code identifiers are in English.
+Unzip symbolic_diff/ alongside your arithmetic scripts. This is an isolated
+experiment: it has its own model, data, runs and vocabulary, and does not overwrite
+the arithmetic project. Model architecture is the same decoder-only pre-LN
+Transformer, with 25 tokens and 192 learned absolute positions.
 
 ## Quick start
 
-Python 3.10+; verified with Python 3.12 and torch 2.15.0+cpu.
-
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+cd symbolic_diff
 python3 -m pip install -r requirements.txt
 python3 -m unittest discover -s tests -v
-python3 train.py --steps 2000 --out runs/instructions
-python3 inspect_model.py runs/instructions --digits 3,1,4,1,5,9
-python3 inspect_model.py runs/instructions \
-  --operation SORT --digits 3,1,4,1,5,9
-python3 inspect_model.py runs/instructions --operation ADD --left 27 --right 15
-# Expected: [4, 2, 12]
-
-python3 inspect_model.py runs/instructions --operation SUB --left 27 --right 15
-# Expected: [1, 2, 12]
-
-python3 inspect_model.py runs/instructions --operation MUL --left 12 --right 3
-# Expected: [3, 6, 12]
-
-python3 inspect_model.py runs/instructions --operation DIV --left 36 --right 3
-# Expected: [1, 2, 12]
+python3 generate.py --stage polynomials --train 1000 --validation 150 --test 150 --out data --overwrite
+python3 train.py --epochs 100 --min-epochs 20 --patience 8 --exact-samples 16 --out runs/polynomials
+python3 inspect_diff.py runs/polynomials --expr '3*x**2 + 2*x + 7'
+python3 evaluate_diff.py runs/polynomials --data data/test.jsonl --limit 100
 ```
 
-For a CPU-only installation, you can install PyTorch separately first:
-`python3 -m pip install torch --index-url https://download.pytorch.org/whl/cpu`.
-No GPU is required. Runtime depends on your machine. This is a small model,
-not a language model trained on a text corpus.
+A generated 1000/150/150 polynomial dataset is included; generation is optional
+unless replacing it. CPU works; longer sequences cost more than the digit task.
+No pretrained weights or convergence guarantee are included. Expected derivative
+of the inspection example is 6*x+2; the trained model may still fail.
 
-## The task
-
-Input: `BOS 3 1 4 1 5 9 SEP`. Expected output: `9 5 1 4 1 3 EOS`.
-The model learns to predict the next token. To reverse a sequence, it must retrieve
-the digit at the appropriate source position, including when digits repeat.
-A simpler copy task is also available with `--task copy`.
-
-Training uses the full sequence with inputs and targets shifted by one token:
-
-- x: `BOS 3 1 4 SEP 4 1 3`
-- y: `IGNORE IGNORE IGNORE IGNORE 4 1 3 EOS`
-
-In this three-digit example, the prediction at the SEP position should be 4.
-The causal mask prevents each position from looking to its right, so the model
-cannot simply read the correct answer from the next column of x. Loss is computed
-only for the answer and EOS: predicting the random source digits serves no purpose.
-
-## Code reading map
-
-| File / class | Purpose |
-|---|---|
-| `model.py / Attention` | Q/K/V, scaled dot product, masking, softmax, merging heads |
-| `model.py / Block` | Pre-LayerNorm, residual connections, FFN, dropout |
-| `model.py / Transformer` | Token and position embeddings, stacked blocks, logits |
-| `model.py / Recurrent` | Two-layer RNN and LSTM baselines for the same task |
-| `data.py` | Example generation, shifted targets, loss masking |
-| `train.py` | AdamW, backward pass, clipping, validation, autoregressive generation |
-| `inspect_model.py` | Attention maps by head and layer, learning curves |
-| `GUIDE.md` | Architecture and training explanations, hands-on experiments |
-
-## Run outputs
-
-The selected `runs/...` directory contains:
-
-- `config.json`: hyperparameters and seed;
-- `metrics.csv`: training and validation loss, token accuracy, exact match, gradient norm, elapsed time;
-- `model.pt`: weights and configuration;
-- after running `inspect_model.py`: `learning.png` and `attention-layer-N.png`.
-
-Attention plots use the correct answer under teacher forcing. This differs from
-the free-running generation printed to the console.
-Maps do not have to form a perfect diagonal: contributions are distributed across
-heads and layers. Attention weights alone do not establish a causal explanation.
-
-## Experiment sequence
+## Simple compositions and stricter evaluation
 
 ```bash
-# 1. Baseline sequence reversal
-python3 train.py --out runs/base
-# 2. Remove positional embeddings
-python3 train.py --no-positions --out runs/no-position
-# 3. Remove the causal mask: an intentionally invalid experiment with future leakage
-python3 train.py --no-mask --out runs/leak
-# 4. One head instead of four, keeping dim unchanged
-python3 train.py --heads 1 --out runs/one-head
-# 5. Memorize a fixed batch of 16 examples
-python3 train.py --overfit --dropout 0 --out runs/overfit
-# 6. Recurrent baselines
-python3 train.py --model rnn --out runs/rnn
-python3 train.py --model lstm --out runs/lstm
-# 7. Longer sequences
-python3 train.py --length 12 --out runs/long
+python3 generate.py --stage compositions --split structure --train 1000 --validation 150 --test 150 --out data-compositions --overwrite
+python3 train.py --data data-compositions --context 192 --epochs 100 --min-epochs 20 --patience 8 --exact-samples 16 --out runs/compositions
+python3 inspect_diff.py runs/compositions --expr 'sin(3*x)'
+python3 inspect_diff.py runs/compositions --expr 'exp(x)*sin(x)'
 ```
 
-Generate plots with `python3 inspect_model.py runs/base`, substituting your run directory.
-For length 12, supply 12 digits through `--digits`.
-Compare multiple seeds (`--seed 1`, `--seed 2`, `--seed 3`), quality, parameter counts,
-and elapsed time. This is an educational comparison: parameter counts are not
-matched, and hyperparameters are not tuned separately for each architecture.
-Do not conclude that Transformers always outperform LSTMs from one short run.
+These start new training runs, not fine-tuning the polynomial checkpoint.
+Compare --split random versus --split structure in separate datasets and runs.
+The latter holds out coefficient-blind tree signatures and may be much harder.
 
-Sources: [Attention Is All You Need](https://arxiv.org/abs/1706.03762),
-[PyTorch CrossEntropyLoss](https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html).
-This model uses a decoder-only, pre-LN architecture. It is a simplified modern
-variant, not an exact reproduction of the original encoder-decoder, post-LN model.
+## Roles
+
+- expressions.py: grammar, tokenization, safe parsers, canonical keys, derivative references.
+- generate.py: generation, filtering, split policies, JSONL and metadata.
+- train.py / early_stopping.py: epoch training, validation, stopping and restoration.
+- inspect_diff.py: neural generation, then reference/symbolic checks.
+- evaluate_diff.py: exact, syntax and equivalence metrics on a chosen split.
+- DATA_PREPARATION.md: rationale, limitations and experiments.
+
+SymPy computes reference derivatives BEFORE training. During generation the model
+receives only the function prompt. SymPy is used again AFTER generation to check
+the answer, not to supply missing answer tokens. This is a teaching experiment,
+not a replacement for a production computer algebra system.
+
+
+## Simpler starting point: monomials
+
+See [MONOMIALS.md](MONOMIALS.md) for the finite monomial generator,
+a two-versus-four-layer comparison and the corrected polynomial equivalence check.
