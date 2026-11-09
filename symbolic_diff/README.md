@@ -54,3 +54,9 @@ not a replacement for a production computer algebra system.
 
 See [MONOMIALS.md](MONOMIALS.md) for the finite monomial generator,
 a two-versus-four-layer comparison and the corrected polynomial equivalence check.
+
+
+## Coefficient arithmetic curriculum
+
+See [COEFFICIENT_CURRICULUM.md](COEFFICIENT_CURRICULUM.md) for auxiliary
+multiplication, held-out pair exclusions and checkpoint fine-tuning.

@@ -195,6 +195,7 @@ def parse_args():
     p.add_argument('--no-positions', action='store_true')
     p.add_argument('--no-mask', action='store_true')
     p.add_argument('--context', type=int, default=192)
+    p.add_argument('--init-checkpoint', help='Initialize weights from a compatible symbolic checkpoint; fresh optimizer')
     p.add_argument('--data', default='data')
     p.add_argument('--out', default='runs/differentiation')
     a = p.parse_args()
@@ -216,8 +217,26 @@ def main():
     config = dict(vocab=VOCAB, max_len=args.context, dim=args.dim, heads=args.heads, layers=args.layers,
                   dropout=args.dropout, positions=not args.no_positions,
                   causal=not args.no_mask)
+    initial = None
+    if args.init_checkpoint:
+        init_path = Path(args.init_checkpoint)
+        if init_path.parent.resolve() == Path(args.out).resolve():
+            raise ValueError('Use a new --out directory for fine-tuning')
+        if json.loads((init_path.parent/'vocabulary.json').read_text()) != TOKENS:
+            raise ValueError('Initialization vocabulary differs')
+        initial = torch.load(init_path, map_location=args.device, weights_only=True)
+        config = initial['config'].copy()
+        args.model = initial['args']['model']
+        args.context = config['max_len']
+        for name in ('dim', 'heads', 'layers', 'dropout'):
+            if name in config:setattr(args, name, config[name])
+        args.no_positions = not config.get('positions', True)
+        args.no_mask = not config.get('causal', True)
+        print('Initializing weights:', init_path, 'architecture:', config)
     model = (Transformer(**config) if args.model == 'transformer'
              else Recurrent(kind=args.model, **config)).to(args.device)
+    if initial is not None:
+        model.load_state_dict(initial['state'])
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     rows = load(Path(args.data) / 'train.jsonl')
     val_rows = load(Path(args.data) / 'validation.jsonl')
