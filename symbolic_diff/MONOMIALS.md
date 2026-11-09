@@ -82,3 +82,43 @@ Verification: original three symbolic tests passed; a 1300-row monomial run
 produced disjoint splits, max input length 27 and max answer length 13. The
 previously unresolved unequal-polynomial example is now classified correctly.
 Full model training was not run in this environment (PyTorch unavailable).
+
+## Classify derivative errors
+
+Replace `evaluate_diff.py` and add `analyze_diff.py` beside it. Run from
+`symbolic_diff/`:
+
+```bash
+python3 evaluate_diff.py runs/monomials-4layers --data data-monomials/test.jsonl --limit 0
+python3 analyze_diff.py runs/monomials-4layers/derivative-evaluation
+cat runs/monomials-4layers/derivative-evaluation/derivative-analysis.md
+```
+
+`--limit 0` evaluates every record; the previous default limit of 100 is unchanged.
+Evaluation automatically saves metrics.json, predictions.jsonl and analysis reports
+under RUN/derivative-evaluation (override with --out). The standalone analyzer
+reuses predictions without running the model. Commands overwrite those reports.
+
+Input cases: zero_constant, constant, linear, higher_monomial, other_expression.
+Each case reports equivalent answers over all examples in that case.
+Error tags for nonzero monomial derivatives:
+
+- coefficient_magnitude: wrong absolute coefficient;
+- sign: wrong coefficient sign;
+- power: wrong exponent;
+- unexpected_zero: generated zero for a nonzero reference;
+- expected_zero_but_nonzero: a constant received a nonzero derivative;
+- non_monomial_output: generated expression is not a single polynomial term;
+- missing_eos / invalid_expression: generation or grammar failure.
+
+Tags can overlap; their sum need not equal the number of incorrect predictions.
+Zero polynomials have no identifiable exponent/sign, so their errors are counted
+separately rather than arbitrarily assigning them degree zero. General polynomial
+inputs are counted as other_expression and non_monomial_input on failure: component
+classification is scoped to monomials. Parsed outputs are canonicalized by SymPy,
+so this analysis describes mathematical outputs, not the network's reasoning.
+The JSON report contains all categorized error examples; Markdown shows up to 15
+per category (change with analyze_diff.py --examples 30).
+
+Five symbolic/analysis unit tests passed. Full model evaluation was not run in
+the delivery environment because PyTorch was unavailable.
