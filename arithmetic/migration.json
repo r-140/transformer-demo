@@ -1,0 +1,76 @@
+{
+  "moves": [
+    {
+      "source": "train.py",
+      "destination": "arithmetic/train.py"
+    },
+    {
+      "source": "model.py",
+      "destination": "arithmetic/model.py"
+    },
+    {
+      "source": "data.py",
+      "destination": "arithmetic/data.py"
+    },
+    {
+      "source": "loader.py",
+      "destination": "arithmetic/loader.py"
+    },
+    {
+      "source": "generate.py",
+      "destination": "arithmetic/generate.py"
+    },
+    {
+      "source": "inspect_model.py",
+      "destination": "arithmetic/inspect_model.py"
+    },
+    {
+      "source": "early_stopping.py",
+      "destination": "arithmetic/early_stopping.py"
+    },
+    {
+      "source": "sampling.py",
+      "destination": "arithmetic/sampling.py"
+    },
+    {
+      "source": "plots.py",
+      "destination": "arithmetic/plots.py"
+    },
+    {
+      "source": "evaluate_test.py",
+      "destination": "arithmetic/evaluate_test.py"
+    },
+    {
+      "source": "analyze_errors.py",
+      "destination": "arithmetic/analyze_errors.py"
+    },
+    {
+      "source": "tests/test_invariants.py",
+      "destination": "arithmetic/tests/test_invariants.py"
+    },
+    {
+      "source": "tests/test_early_stopping.py",
+      "destination": "arithmetic/tests/test_early_stopping.py"
+    },
+    {
+      "source": "tests/test_sampling.py",
+      "destination": "arithmetic/tests/test_sampling.py"
+    },
+    {
+      "source": "data",
+      "destination": "arithmetic/data"
+    },
+    {
+      "source": "data-add",
+      "destination": "arithmetic/data-add"
+    },
+    {
+      "source": "data-sub",
+      "destination": "arithmetic/data-sub"
+    },
+    {
+      "source": "runs",
+      "destination": "arithmetic/runs"
+    }
+  ]
+}

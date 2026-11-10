@@ -1,0 +1,12 @@
+# Arithmetic datasets and local backups
+/data*/
+# Checkpoints, metrics and generated plots
+/runs/
+/checkpoints/
+*.pt
+*.pth
+*.ckpt
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
