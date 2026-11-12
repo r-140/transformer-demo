@@ -1,6 +1,6 @@
 # Transformer Learning Roadmap
 
-Last updated: 2026-11-05.
+Last updated: 2026-11-10.
 
 Purpose: learn Transformer mathematics through reproducible experiments, then move
 to natural-language generation and analysis. This is a task tracker, not a promise
@@ -12,10 +12,20 @@ require perfect accuracy. Checkboxes below describe completion criteria.
 
 ## Current focus and next actions
 
-1. Finish the isolated ADD experiment and report train/validation/test results.
-2. Run polynomial differentiation and inspect syntax and symbolic-equivalence errors.
-3. Introduce simple compositions and chain-rule cases.
-4. Decide whether to take the vector/matrix branch before natural-language generation.
+1. Add restricted AST preprocessing after the explicit-list polynomial experiment.
+2. Preserve monomial module checkpoints and inspect polynomial errors by term count.
+3. Continue with compositions/chain rule and the planned text experiments as desired.
+4. Deploy a selected, locally validated experiment to GCP at the final stage;
+   manage infrastructure with Terraform. No cloud resources are provisioned now.
+
+Latest confirmed result: `modular_math` polynomial validation scored 78/100 whole
+polynomials and 272/297 individual terms (91.58%). Two-, three-, and four-term
+polynomials scored 30/33, 31/37, and 17/30. No invalid outputs or compensating
+errors were observed. This reuses trained monomial modules; exact Python code
+assembles their predictions. AST parsing is the next planned step.
+
+Earlier sections retain the original experiment checklists; the dated update
+above supersedes older next-action statements where work has since progressed.
 
 Do not change multiple major factors at once. Preserve the arithmetic baseline
 rather than overwriting its data and checkpoints with the differentiation experiment.
@@ -25,7 +35,7 @@ rather than overwriting its data and checkpoints with the differentiation experi
 | ID | Stage | Current status | Next action |
 |---|---|---|---|
 | M1 | Arithmetic baseline and isolated ADD | In progress | Evaluate the expanded ADD dataset and selected checkpoints |
-| M2 | Polynomial differentiation | Ready to run | Train the supplied symbolic_diff experiment |
+| M2 | Polynomial differentiation | In progress | List-based modular validation completed; implement AST preprocessing next |
 | M3 | Compositions and chain rule | Ready to run | Run after M2; compare random and structural splits |
 | M4 | Vector and matrix operations | Optional | Start with transpose if this helps connect positions to structure |
 | M5 | Mathematics inside the network | Planned, parallel track | Work through a tiny attention calculation and gradients |
@@ -37,6 +47,7 @@ rather than overwriting its data and checkpoints with the differentiation experi
 | A2 | Integration | Optional, later | Reverse-generated symbolic examples, then numerical method selection |
 | A3 | OCR and historical texts | Optional, separate branch | Character recognition before word segmentation and dating |
 | A4 | Physical field modeling | Optional, separate architecture | One waveguide/resonator family with classical reference solutions |
+| C1 | GCP deployment with Terraform | Planned, final stage | Package a selected local model, then add reproducible cloud infrastructure |
 
 Statuses are based on work confirmed in the conversation. Ready to run means the
 code/data were prepared and infrastructure checks passed, not that a full user
@@ -76,7 +87,9 @@ stop producing useful learning about the model.
 
 ## M2. Polynomial differentiation
 
-Status: **Ready to run**; user training results not yet recorded.
+Status: **In progress**. Explicit-list modular polynomial validation is completed;
+AST preprocessing is next. The checklist below also covers the earlier standalone
+symbolic_diff path and is not a claim that every item is completed.
 
 Scope: integer constants, powers of x, sums and polynomial derivatives.
 Use the separate symbolic_diff directory and vocabulary.
@@ -227,6 +240,71 @@ solutions, encode geometry/materials/boundaries, and evaluate field/eigenvalue
 errors together with physical residuals. Neural operators, PINNs or hybrid
 solvers require separate architecture/data decisions; this is not simply another
 instruction token for the current symbolic language model.
+
+## C1. Final stage: GCP deployment managed with Terraform
+
+Status: **Planned; deferred until the local learning experiments are ready**.
+
+Cloud preference: Google Cloud. Start with a small CPU inference service and
+short-lived training experiments. The user intends to use introductory credits;
+verify eligibility, current credit amount/expiry, service restrictions, quotas and
+prices at implementation time. Do not assume credits guarantee a fixed number of
+experiments or cover every resource. Do not provision resources at this stage.
+
+### Planned components
+
+| Purpose | Initial GCP candidate | Scope |
+|---|---|---|
+| Versioned datasets, checkpoints, reports and release manifests | Cloud Storage | Store artifacts outside serving instances |
+| Container images pinned by digest | Artifact Registry | Separate model artifacts from application images |
+| Small inference API | Cloud Run | Load explicitly selected model versions; start with CPU |
+| Training experiments | Compute Engine or Vertex AI | Choose after measuring runtime, memory and cost |
+| Logs and operational metrics | Cloud Logging / Monitoring | Latency, errors, resources and release identifiers |
+| Experiment metadata / model registry | Start with manifests; assess MLflow or Vertex AI later | Add a database only when justified |
+
+GKE, a StatefulSet, a vector database and a separate managed database are not
+initial requirements. Multiple small neural modules can share one serving
+container. Record their compatible versions in one release manifest, including
+the AST preprocessor, vocabulary and inter-module contract version.
+
+### Terraform deliverables (to implement at the deployment stage)
+
+Proposed repository location: `infra/terraform/gcp/`.
+
+- [ ] Define environment inputs: project ID, region, names, resource sizing and labels.
+- [ ] Separate project/billing/API bootstrap from application infrastructure.
+- [ ] Create Cloud Storage artifact buckets and Artifact Registry repository.
+- [ ] Define service accounts and least-privilege artifact access; choose API authentication.
+- [ ] Define the Cloud Run service, model artifact references and image digest.
+- [ ] Configure scaling limits and idle behavior appropriate for the selected service.
+- [ ] Add budget notifications, monitoring and an explicit cleanup procedure.
+- [ ] Choose remote Terraform state storage with restricted access and documented bootstrap.
+- [ ] Keep credentials, state files, plans and sensitive variable values out of Git.
+- [ ] Document `terraform fmt`, `validate`, `plan`, `apply` and `destroy` workflows.
+- [ ] Document persistent artifacts/state that intentionally survive experiment cleanup.
+
+Budget notifications are alerts, not a guaranteed spending cap. Estimate costs
+before launching; explicitly stop/delete training resources after experiments.
+Check current service and provider behavior when writing actual Terraform.
+
+Terraform provisions infrastructure. Separate scripts or CI build/push images,
+upload model artifacts, launch training and publish a selected release. Do not
+hide model training inside Terraform resource creation or local-exec hooks.
+
+### Packaging and acceptance criteria
+
+- [ ] Containerize inference and pin Python dependencies.
+- [ ] Persist weights, architecture configuration, tokenizer/vocabulary and code revision.
+- [ ] Persist dataset hashes, split policy, hyperparameters, seeds and evaluation reports.
+- [ ] If training resume is supported, save optimizer/scheduler/scaler and RNG states.
+- [ ] Publish a compatible module/preprocessor release manifest with artifact checksums.
+- [ ] Verify a cold start, authenticated prediction, error handling and rollback.
+- [ ] Compare cloud outputs with local reference requests and measure latency/memory/cost.
+- [ ] Recreate the environment from Terraform and demonstrate cleanup.
+
+Exit criterion: one reproducible GCP release with traceable model artifacts,
+measured operational behavior and a documented cost/cleanup process. This stage
+follows local validation; it does not replace the AST or text-learning stages.
 
 ## Per-stage experiment record
 
