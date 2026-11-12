@@ -1,6 +1,6 @@
 # Transformer Learning Roadmap
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-12.
 
 Purpose: learn Transformer mathematics through reproducible experiments, then move
 to natural-language generation and analysis. This is a task tracker, not a promise
@@ -12,34 +12,40 @@ require perfect accuracy. Checkboxes below describe completion criteria.
 
 ## Current focus and next actions
 
-1. Add restricted AST preprocessing after the explicit-list polynomial experiment.
-2. Preserve monomial module checkpoints and inspect polynomial errors by term count.
-3. Continue with compositions/chain rule and the planned text experiments as desired.
-4. Deploy a selected, locally validated experiment to GCP at the final stage;
-   manage infrastructure with Terraform. No cloud resources are provisioned now.
+1. Start M4 with matrix transposition in a separate `linear_algebra/` lab.
+2. Continue with vector addition, dot products and matrix-vector multiplication.
+3. Optionally finish with 2x2 matrix multiplication if it adds useful learning.
+4. Only after the agreed linear-algebra experiments, move to L1 text generation.
+5. Keep GCP deployment with Terraform as the final stage, not the next task.
 
-Latest confirmed result: `modular_math` polynomial validation scored 78/100 whole
-polynomials and 272/297 individual terms (91.58%). Two-, three-, and four-term
-polynomials scored 30/33, 31/37, and 17/30. No invalid outputs or compensating
-errors were observed. This reuses trained monomial modules; exact Python code
-assembles their predictions. AST parsing is the next planned step.
+Confirmed differentiation progress (2026-11-12): explicit-list polynomial
+validation scored 78/100 whole polynomials and 272/297 terms (91.58%). AST parsing,
+explicit chain-rule composition, product rule and quotient rule were implemented
+and exercised with the trained monomial modules. The reported ordinary quotient
+had correct factor derivatives, correct rational output and retained domain.
+The removable-hole example has a unit test; a live checkpoint result for that
+particular example has not been reported.
 
-Earlier sections retain the original experiment checklists; the dated update
-above supersedes older next-action statements where work has since progressed.
+These are hybrid experiments: code selects rules, performs substitution/assembly
+and retains domain conditions; networks predict monomial derivatives. This is
+not evidence the models learned general calculus rule selection. The observed
+constant-copy error 1 -> 131 can be masked by a correct zero flag; keep checking
+message contracts separately from derivative correctness.
 
-Do not change multiple major factors at once. Preserve the arithmetic baseline
-rather than overwriting its data and checkpoints with the differentiation experiment.
+Preserve all datasets and checkpoints. Change one major experimental factor at
+a time. Existing tests already used to guide choices are development benchmarks,
+not fresh final holdouts.
 
 ## Progress overview
 
 | ID | Stage | Current status | Next action |
 |---|---|---|---|
 | M1 | Arithmetic baseline and isolated ADD | In progress | Evaluate the expanded ADD dataset and selected checkpoints |
-| M2 | Polynomial differentiation | In progress | List-based modular validation completed; implement AST preprocessing next |
-| M3 | Compositions and chain rule | Ready to run | Run after M2; compare random and structural splits |
-| M4 | Vector and matrix operations | Optional | Start with transpose if this helps connect positions to structure |
+| M2 | Polynomial differentiation and AST | Done for current scope | Preserve baseline, traces and known limits |
+| M3 | Explicit hybrid chain/product/quotient rules | Done for current scope | Learned rule selection and transcendental cases deferred |
+| M4 | Vector and matrix operations | Planned — next, before language | Start matrix transpose; then vector addition, dot product and matrix-vector product |
 | M5 | Mathematics inside the network | Planned, parallel track | Work through a tiny attention calculation and gradients |
-| L1 | Character-level text generation | Planned | Choose one language and a small permitted corpus |
+| L1 | Character-level text generation | Planned — after M4 | Choose one language and a small permitted corpus after linear algebra |
 | L2 | Subword tokenization and language comparison | Planned | Compare with L1, then English versus Polish |
 | L3 | Short-text intent classification | Planned | Build an encoder classifier on a bounded task |
 | L4 | Fine-tuning a pretrained model | Planned | Compare with the from-scratch classifier |
@@ -85,61 +91,84 @@ Exit criterion: a reproducible result with understood error categories, not
 necessarily universal arithmetic. More iterations are not an obligation if they
 stop producing useful learning about the model.
 
-## M2. Polynomial differentiation
+## M2. Polynomial differentiation and AST
 
-Status: **In progress**. Explicit-list modular polynomial validation is completed;
-AST preprocessing is next. The checklist below also covers the earlier standalone
-symbolic_diff path and is not a claim that every item is completed.
+Status: **Done for the current educational scope**.
 
-Scope: integer constants, powers of x, sums and polynomial derivatives.
-Use the separate symbolic_diff directory and vocabulary.
+- [x] Evaluate monomial differentiation and identify coefficient multiplication errors.
+- [x] Compare depth and coefficient-training experiments; preserve their limitations.
+- [x] Implement modular differentiation using an explicit predicted message.
+- [x] Compare continuous intermediate supervision and mandatory hard/ST interfaces.
+- [x] Compose polynomial derivatives from shared monomial models without retraining.
+- [x] Evaluate list-based polynomial validation: 78/100; term accuracy 272/297.
+- [x] Add bounded AST parsing with signs, parentheses, products and integer powers.
+- [x] Document token IDs, traces, message contracts and mathematical correctness.
 
-- [ ] Run the polynomial dataset and training pipeline.
-- [ ] Check constants, monomials and sums separately.
-- [ ] Record token-exact accuracy, malformed-output rate and symbolic equivalence.
-- [ ] Compare random versus coefficient-blind structural splitting.
-- [ ] Explain which duplicates canonicalization removes and which it does not.
-- [ ] Preserve the selected model, configuration, plots and error examples.
+Representative results: coefficient-curriculum monomial test reached 114/150 with
+8 layers; factored-target test reached 150/150 with exact external coefficient
+multiplication. Those are different responsibilities and must not be conflated.
+Modular arithmetic-depth8 pipeline test scored 323/354. Mandatory-interface
+straight-through test scored 312/354 versus hard 308/354, a single-seed comparison.
 
-Exit criterion: we can distinguish fitting, structural transfer, syntax errors,
-and mathematically equivalent alternative outputs.
+Deferred: broader structural splits and a universal symbolic differentiator.
+No completion label implies perfect arithmetic or unrestricted generalization.
 
-## M3. Simple compositions and the chain rule
+## M3. Explicit hybrid calculus rules
 
-Status: **Ready to run**, after M2; composition generator exists.
+Status: **Done for current scope; learned rule selection deferred**.
 
-Scope: sin, cos, exp, simple products and compositions such as sin(3*x).
+- [x] Chain-rule orchestration: preserve outer power and differentiate inner polynomial.
+- [x] Check `(3*x+1)**2` and `(3*x**3+6*x**2)**2` with live checkpoints.
+- [x] Product rule: separately predict u' and v', then assemble u'v+uv'.
+- [x] Compare the product example against expansion-first differentiation.
+- [x] Quotient rule: assemble (u'v-uv')/v**2 and retain original v != 0.
+- [x] Check ordinary quotient with live models; test removable-domain-hole retention in code.
+- [x] Document which computations are neural and which are exact Python operations.
+- [ ] Optional: live checkpoint check of `(x**2-1)/(x-1)` with x != 1.
 
-- [ ] Create a separate composition dataset and new run directory.
-- [ ] Evaluate product-rule and chain-rule cases separately.
-- [ ] Compare familiar and held-out expression structures.
-- [ ] Analyze the effect of longer target expressions.
-- [ ] Optionally label outer derivative, inner derivative and substitution steps.
+Deferred extensions: train a rule selector; recursively compose arbitrary rules;
+learn sin/cos/exp derivatives; compare held-out expression structures. These are
+not prerequisites for the agreed move to linear algebra.
 
-Intermediate-step supervision is an optional future data extension; it is not
-implemented merely because final derivative examples exist. Current stage changes
-start new runs rather than automatically fine-tuning the previous checkpoint.
+## M4. Vectors and small matrices — next stage
 
-Exit criterion: documented behavior on compositions and its limits.
+Status: **Planned; agreed to complete before text generation**.
 
-## M4. Vectors and small matrices
+Create a separate `linear_algebra/` directory, leaving earlier lab files and
+weights intact. Code and training runs for this stage have not yet been delivered.
 
-Status: **Optional before language**.
+| Order | Task | Main learning goal | Status |
+|---|---|---|---|
+| M4.1 | Matrix transpose | Positions, shape serialization, 2D structure without arithmetic | Next |
+| M4.2 | Vector addition | Pair corresponding positions and generate numeric results | Planned |
+| M4.3 | Dot product | Multiplication followed by reduction | Planned |
+| M4.4 | Matrix-vector multiplication | Reuse multiple dot products and preserve output shape | Planned |
+| M4.5 | 2x2 matrix multiplication | Combine the previous skills | Optional capstone |
 
-Take only the parts that clarify architecture mathematics:
+### M4.1 Matrix transpose acceptance checklist
 
-- [ ] Matrix transpose: a structural rearrangement task.
-- [ ] Vector addition: elementwise positional correspondence.
-- [ ] Dot product: multiplication followed by reduction.
-- [ ] Matrix-vector product: multiple dot products.
-- [ ] Optionally multiply 2×2 matrices once arithmetic is reliable enough.
+- [ ] Define row/column dimensions, delimiters and a row-major token format.
+- [ ] Start with single-digit values to isolate structural errors from arithmetic.
+- [ ] Include rectangular as well as square matrices; output shape must swap.
+- [ ] Prepare reproducible, nonoverlapping input-matrix splits and save provenance.
+- [ ] Train a bounded baseline with existing checkpoint/early-stopping conventions.
+- [ ] Report token accuracy, complete-matrix exact match and shape validity.
+- [ ] Separate held-out contents at familiar shapes from wholly held-out shapes.
+- [ ] Include duplicate values and inspect position mapping using distinct-value examples.
+- [ ] Preserve traces and attention inspection as diagnostics, not proof of causation.
 
-For each task, define shape markers, value ranges, serialization, reference
-computation and split rules before training. Evaluate by task and dimension;
-success at one shape does not imply transfer to larger matrices.
+Example: row-major [[1,2,3],[4,5,6]] (2x3) becomes [[1,4],[2,5],[3,6]] (3x2).
+Changing shape can also change sequence length; report that confound explicitly.
+No arithmetic is required for transposition, so this is the cleanest first task.
 
-Exit criterion: one or more controlled experiments connecting representation
-structure to behavior. Determinants and larger matrix arithmetic are deferred.
+For M4.2–M4.5 specify numeric ranges, signs, carries, shape markers, serialization,
+reference computation and split policy before training. Multiplication failures
+may reappear; perfect accuracy is not required to finish an informative experiment.
+Do not change architecture depth/width together with the task representation.
+
+Exit criterion: documented structural and arithmetic behavior, including familiar
+versus unfamiliar shapes, with reproducible commands and saved checkpoints. Then
+start L1. Determinants and larger matrix arithmetic remain deferred.
 
 ## M5. Mathematics inside the Transformer
 
@@ -162,7 +191,7 @@ matrices is distinct from understanding the matrices inside that model.
 
 Status: **Planned**.
 
-Start with ONE language and a small corpus with clear usage rights.
+Begin after M4. Start with ONE language and a small corpus with clear usage rights.
 
 - [ ] Create corpus preparation and held-out document splitting.
 - [ ] Train next-character generation and inspect memorization.
