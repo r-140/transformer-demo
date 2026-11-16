@@ -1,6 +1,6 @@
 # Monomial derivatives and model-depth comparison
 
-Replace `generate.py` and `expressions.py` with this update. Existing polynomial
+Replace `generate.py` and `../expressions.py` with this update. Existing polynomial
 checkpoints retain the same vocabulary and architecture compatibility. Run all
 commands from `symbolic_diff/` with the existing environment active.
 
@@ -85,7 +85,7 @@ Full model training was not run in this environment (PyTorch unavailable).
 
 ## Classify derivative errors
 
-Replace `evaluate_diff.py` and add `analyze_diff.py` beside it. Run from
+Replace `../evaluate_diff.py` and add `analyze_diff.py` beside it. Run from
 `symbolic_diff/`:
 
 ```bash

@@ -143,7 +143,7 @@ not prerequisites for the agreed move to linear algebra.
 
 Status: **In progress; before architecture controls and text generation**.
 
-Existing `linear_algebra/` contains the transpose baseline and independent
+Existing `../linear_algebra` contains the transpose baseline and independent
 `vector_add/`, `dot_product/` labs. Preserve datasets, vocabularies and weights.
 
 | Order | Task | Status / confirmed result |

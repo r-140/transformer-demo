@@ -1,7 +1,7 @@
 # Transformer depth, width, and modular mathematics
 
 This guide describes the project's explicit pre-LayerNorm causal decoder in
-`symbolic_diff/model.py`. The arithmetic lab uses the same block design with a
+`../symbolic_diff/model.py`. The arithmetic lab uses the same block design with a
 different vocabulary/context configuration. Documentation examples run from
 `symbolic_diff/`.
 

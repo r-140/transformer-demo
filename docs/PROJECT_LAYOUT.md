@@ -78,7 +78,7 @@ Use only checkpoints/dataset backups that actually exist. The archive contains
 no personal training weights/data. The last two commands require the retained
 ADD test set, not whichever dataset is currently active in data/.
 
-For new arithmetic work start at [arithmetic/README.md](arithmetic/README.md).
+For new arithmetic work start at [arithmetic/README.md](../arithmetic/README.md).
 
 ## Verification of this update
 

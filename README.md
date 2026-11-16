@@ -52,5 +52,5 @@ not a replacement for a production computer algebra system.
 
 ## Simpler starting point: monomials
 
-See [MONOMIALS.md](MONOMIALS.md) for the finite monomial generator,
+See [MONOMIALS.md](docs/MONOMIALS.md) for the finite monomial generator,
 a two-versus-four-layer comparison and the corrected polynomial equivalence check.
