@@ -1,6 +1,6 @@
 # Transformer Learning Roadmap
 
-Last updated: 2026-11-14.
+Last updated: 2026-11-16.
 
 Purpose: learn Transformer mathematics through reproducible experiments, then move
 to natural-language generation and analysis. This is a task tracker, not a promise
@@ -12,15 +12,29 @@ require perfect accuracy. Checkboxes below describe completion criteria.
 
 ## Current focus and next actions
 
-1. Run the supplied dot-product lab and evaluate its validation/test results.
-2. Continue with matrix-vector multiplication and a bounded matrix-product experiment.
-3. Revise larger rectangular matrix products; optionally explore coordinate Jacobians.
-4. After linear algebra, run FFN controls on selected existing mathematical tasks.
-5. Begin text generation with a controlled LSTM-versus-Transformer comparison.
-6. Add image recognition comparisons: CNN versus Transformer-based models.
-7. Keep later branches for multiple-solution tasks (A5), verified integration (A2),
-   then integration-method recommendations after both A2 and text generation (A6).
-8. Integrate a modular formula-image assistant and deploy it on GCP with Terraform.
+1. Record the completed bounded B1 comparison and proceed to character-level text
+   generation (L1). Sorting test on598 sequences from300 held-out multisets:
+   linear7/598, compact FFN142/598, matched FFN306/598, Transformer598/598.
+   These compare numerical MSE/rounding with token CE/autoregressive generation,
+   not an isolated attention ablation. Single model seed42; no universal claim.
+2. Preserve the completed bounded linear-algebra experiments and their failures on
+   unseen shapes. Fixed3x3 transpose: all four models scored300/300 on test.
+   Mixed familiar shapes: both FFNs and Transformer scored1200/1200; linear9/1200.
+   All four scored0/600 on the new2x4/4x2 shapes, with output-shape failure confounded
+   by untrained dimension4 features/tokens.
+3. Optionally finish the fixed-reversal control; do not prolong redundant controls
+   at the expense of the next learning stage.
+4. Begin character-level text generation with a controlled LSTM-versus-Transformer
+   comparison after the current B1 scope is recorded.
+5. Add image recognition comparisons: CNN versus Transformer-based models.
+6. Keep advanced branches separate: algorithm selection/execution and search (A7),
+   multiple-solution tasks (A5), verified integration (A2), then integration-method
+   recommendations after both A2 and text generation (A6).
+7. Integrate a modular formula-image assistant and deploy it on GCP with Terraform.
+
+A7 is an advanced follow-up, not a requirement to finish before text generation.
+Current comparison code predicts sorted results; it does not explicitly choose
+or execute quicksort, merge sort or another named sorting algorithm.
 
 Confirmed differentiation progress (2026-11-12): explicit-list polynomial
 validation scored 78/100 whole polynomials and 272/297 terms (91.58%). AST parsing,
@@ -47,9 +61,9 @@ not fresh final holdouts.
 | M1 | Arithmetic baseline and isolated ADD | In progress | Evaluate the expanded ADD dataset and selected checkpoints |
 | M2 | Polynomial differentiation and AST | Done for current scope | Preserve baseline, traces and known limits |
 | M3 | Explicit hybrid chain/product/quotient rules | Done for current scope | Learned rule selection and transcendental cases deferred |
-| M4 | Vector and matrix operations | In progress | Transpose/addition evaluated; dot product ready to run |
+| M4 | Vector and matrix operations | Done for bounded educational scope | Preserve traces and unseen-shape limitations |
 | M5 | Mathematics inside the network | Planned, parallel track | Work through a tiny attention calculation and gradients |
-| B1 | FFN mathematical controls | Planned — after M4 | Reuse selected task definitions and split identities |
+| B1 | FFN mathematical controls | Done for bounded transpose/sorting scope | Preserve results; further controls optional, then L1 |
 | L1 | Character-level text generation | Planned — after B1 | Compare LSTM and Transformer on the same corpus |
 | V1 | Image/symbol recognition | Planned — later | Compare CNN and Transformer-based recognition |
 | P1 | Modular formula-image assistant | Planned capstone | Combine specialized models through explicit contracts |
@@ -60,6 +74,7 @@ not fresh final holdouts.
 | A2 | Integration with verified solution steps | Planned, later extension | Preprocessing and bounded method search before numerical fallbacks |
 | A5 | Multiple solutions and equivalent answers | Planned, later educational branch | Polynomial root sets, then bounded ODE families |
 | A6 | Integration-method recommendations | Planned — after L1 and A2 | Rank valid methods and preparatory rewrites with explanations |
+| A7 | Array search, sorting algorithms and learned algorithm control | Planned advanced branch | Revise classical algorithms, then separate result prediction, selection and execution |
 | A3 | OCR and historical texts | Optional, separate branch | Character recognition before word segmentation and dating |
 | A4 | Physical field modeling | Optional, separate architecture | One waveguide/resonator family with classical reference solutions |
 | C1 | GCP deployment with Terraform | Planned, final stage | Package a selected local model, then add reproducible cloud infrastructure |
@@ -143,7 +158,7 @@ not prerequisites for the agreed move to linear algebra.
 
 Status: **In progress; before architecture controls and text generation**.
 
-Existing `../linear_algebra` contains the transpose baseline and independent
+Existing `linear_algebra/` contains the transpose baseline and independent
 `vector_add/`, `dot_product/` labs. Preserve datasets, vocabularies and weights.
 
 | Order | Task | Status / confirmed result |
@@ -250,20 +265,63 @@ adapting pretrained representations.
 
 ## B1. FFN controls after the mathematical experiments
 
-Status: **Planned**.
+Status: **Done for the bounded transpose and sorting comparison scope**.
+Repeated seeds, matched-compute controls and memory profiling remain optional
+extensions, not completed measurements. Reverse was not needed as another fixed
+permutation control and is deferred rather than marked implemented.
 
-Reuse selected arithmetic, transpose and vector/matrix tasks with the SAME input
-ranges and saved split identities. Include an exact fixed-shape linear permutation
-baseline for transpose. Define bounded FFN inputs/outputs with dimensions/padding;
-document differences from autoregressive decoding rather than hiding them.
+- [x] Compare a learned affine baseline, small FFN, roughly parameter-matched FFN
+  and causal Transformer with identical operand datasets and split hashes.
+- [x] Evaluate fixed3x3 transpose and mixed familiar-shape transpose on full tests.
+- [x] Test unseen transpose shapes; document dimension4 and output-shape confounds.
+- [x] Evaluate length6 sorting with disjoint multiset groups across splits.
+- [x] Record seeds, actual optimization budgets, validation selection and runtimes.
+- [x] Distinguish ordered output from preservation of the input multiset.
+- [ ] Optional: match numerical/token interfaces more closely to isolate architecture.
+- [ ] Optional: repeat model seeds and compare compute-matched training budgets.
+- [ ] Optional: profile memory and repeat batch1/throughput timings on an idle machine.
 
-- [ ] Compare roughly parameter-matched runs and separately compute-budget-matched runs.
-- [ ] Preserve seeds, optimization budgets, early stopping and validation selection.
-- [ ] Report accuracy by operation/shape, training time, memory and inference latency.
-- [ ] Repeat seeds before asserting an architectural advantage.
+### Confirmed test results (2026-11-16)
 
-All fairness constraints cannot generally be matched simultaneously. Previously
-inspected tests are development benchmarks, not untouched final holdouts.
+| Experiment | Linear | Small FFN | Matched FFN | Transformer |
+|---|---:|---:|---:|---:|
+| Fixed3x3 transpose |300/300|300/300|300/300|300/300|
+| Mixed familiar transpose shapes |9/1200|1200/1200|1200/1200|1200/1200|
+| Unseen transpose shapes2x4/4x2 |0/600|0/600|0/600|0/600|
+| Sort6: held-out multiset groups |7/598 (1.17%)|142/598 (23.75%)|306/598 (51.17%)|598/598 (100%)|
+
+Sorting validation was0/600,129/600,298/600 and600/600 respectively.
+The test has598 input sequences from300 held-out multisets, not598 independent
+multiset groups. One/two permutations per group can produce correlated errors.
+
+Sort6 test diagnostics:
+
+| Model | Nondecreasing output | Input multiset preserved | Positional accuracy |
+|---|---:|---:|---:|
+| Linear |95.99%|1.17%|34.73%|
+| Small FFN |86.12%|25.42%|74.97%|
+| Matched FFN |95.15%|51.51%|87.65%|
+| Transformer |100%|100%|100%|
+
+The main observable FFN issue is often changing values/multiplicities despite
+ordered-looking output. This is not proof of a specific hidden mechanism.
+Transformer sorts the tested length6/digit-domain holdout perfectly; arbitrary
+lengths, stable object sorting and named-algorithm execution were not tested.
+
+Sort6 parameter counts:42 linear;18,182 small FFN;207,893 matched FFN;207,514
+Transformer. Training wall times were about2.63s,14.60s,25.48s and190.96s.
+Measured test inference was about0.0085,0.0107,0.0139 and20.18ms/sequence:
+numeric batch64 versus sequential Transformer batch1, with no KV cache.
+These are single-machine end-to-end measurements, not universal speed ratios.
+
+Numerical models use MSE plus rounding; Transformer uses token CE and generation.
+Loss units, output obligations, learning rates, dropout and stopping sensitivity
+differ. Parameter matching does not match compute. Do not attribute the entire
+sorting gap to attention alone, or claim generic FFNs cannot express sorting.
+
+Exit met: task-dependent strengths and limitations documented. Move to L1 without
+requiring every optional control. Previously inspected tests become development
+benchmarks if they guide future changes; preserve a fresh holdout for new claims.
 
 ## V1. Image and symbol recognition comparisons
 
@@ -500,6 +558,133 @@ This is a recommendation task over mathematical actions, not automatically a
 collaborative-filtering problem. The learned component might be a classifier,
 ranker or Transformer planner, optionally with a separate explanation model.
 It can later integrate with A2's search controller and P1's modular assistant.
+
+### A7. Array search, sorting algorithms and learned algorithm control
+
+Status: **Planned advanced branch; no selector or step executor implemented yet**.
+Keep this separate from the current direct-result sorting comparison. It can reuse
+B1 findings, the modular_math interface pattern and later language explanations.
+The goal is both to revise classical algorithms and to study different learning
+objectives, including specialized algorithms that exploit restricted data domains.
+
+#### A7.1 Array search before algorithm control
+
+- [ ] Define output contracts: membership, first index, all indices, nearest value,
+  and a clear not-found representation. Index conventions must be explicit.
+- [ ] Include duplicates and empty/absent cases; specify tie-breaking for nearest
+  values and whether input is sorted.
+- [ ] Compare bounded FFN/Transformer result prediction with deterministic linear
+  and binary search where their preconditions apply.
+- [ ] Distinguish search preprocessing cost from per-query cost: sorting or building
+  an index can pay off for repeated queries but not necessarily a single lookup.
+- [ ] Evaluate unseen lengths/distributions separately from familiar-domain accuracy.
+
+#### A7.2 Classical sorting refresher and deterministic benchmarks
+
+Start with inspectable code and worked traces, then benchmark actual implementations.
+Do not assume that comparison sorting is always the appropriate algorithm family.
+
+| Algorithm / family | Useful setting or property | Limitation to record |
+|---|---|---|
+| Insertion sort | Small or nearly ordered arrays; standard stable variant | Quadratic worst case; movement cost matters |
+| Merge sort | Stable general comparison sorting with deterministic n log n behavior | Standard array variant needs auxiliary storage; stable tie handling must be implemented |
+| Quicksort | Often practical when stability is unnecessary; pivot/partition choices matter | Standard in-place variants are unstable; poor pivots can give quadratic worst case |
+| Introsort / heapsort fallback | Comparison sorting with bounded worst-case behavior | Common implementations are unstable; benchmark actual variant |
+| TimSort | Stable adaptive sorting that exploits existing ordered runs | Benefits depend on runs, comparator cost and implementation |
+| Counting sort | Integer keys in a sufficiently small range K; O(n+K) | Range-dependent memory/time; stable object placement requires the appropriate implementation |
+| Radix sort | Bounded digit/bit representations; d passes can cost O(d(n+b)) | Representation, digit base b, signs and pass stability must be specified |
+| Bucket sort | Suitable distributions and useful bucket partitioning | Expected performance needs distribution assumptions; skew and within-bucket sorting matter |
+
+Count comparison, movement and auxiliary memory separately where useful. Linear
+or near-linear specialized algorithms do not contradict the comparison-sorting
+lower bound: they exploit restrictions beyond arbitrary key comparisons.
+Do not label these methods universally faster; include encoding/preprocessing,
+allocation and cache costs in the measured workload.
+
+#### A7.3 Stability is a constraint, not a complete selection rule
+
+“Object order matters” means preservation of the relative order of objects with
+**equal sorting keys**, not preservation of the entire input order.
+
+Example, sorted by key:
+
+    input:  [(2,A), (1,B), (2,C)]
+    stable: [(1,B), (2,A), (2,C)]
+
+Both key2 objects must remain A before C. A model that emits only sorted keys
+cannot demonstrate stability; preserve original IDs/payloads in this experiment.
+
+- [ ] Make `stable_required` an explicit task requirement.
+- [ ] If true, restrict candidates to verified stable implementations, e.g. stable
+  merge sort, TimSort, insertion sort, or appropriately implemented counting/radix.
+- [ ] If false, permit stable AND unstable candidates; it does not force quicksort.
+- [ ] Record memory constraints, key type/range, nearly sorted runs, duplicate rate,
+  comparator cost and worst-case requirements before choosing among valid candidates.
+- [ ] Treat standard quicksort as usually unstable; stable variants exist and must
+  be labeled as such. Merge sort stability also depends on tie-breaking in merging.
+
+Thus “stable -> merge sort; otherwise -> quicksort” is a useful first illustrative
+branch, not the final policy. A stable, nearly sorted workload may favor an adaptive
+method; a narrow integer range may make a stable counting implementation useful.
+
+#### A7.4 Learn a selector, execute ordinary code
+
+Use a modular pipeline:
+array/object metadata + requirements -> candidate filter -> learned classifier or
+ranker -> selected verified implementation -> independent result checks.
+The selector may be a small FFN, a decision tree baseline or a Transformer; this
+is not an exclusively Transformer task. Exact algorithms remain deterministic.
+
+- [ ] Extract bounded features: n, key range/type, duplicate rate, ordered-run or
+  disorder estimates, required stability and available auxiliary memory.
+- [ ] Measure feature extraction and algorithm execution together; document any
+  sampling approximation or feature cost.
+- [ ] Build labels from repeated benchmarks on controlled hardware, using separate
+  data families and multiple sizes; use an array once only within its split group.
+- [ ] Support multiple near-tied good choices, ranking and uncertain recommendations.
+- [ ] Filter invalid candidates deterministically; a hard stability/memory requirement
+  must not depend solely on a neural classifier remembering it.
+- [ ] Compare with fixed-algorithm and simple hand-written selection policies.
+- [ ] Report correctness, stability, requirement violations, total latency, peak
+  auxiliary memory and selection overhead.
+- [ ] Measure regret against the best feasible MEASURED implementation on that input;
+  do not assume one mathematically unique algorithm label.
+- [ ] Use held-out array distributions, sizes and machines as distinct transfer tests.
+
+Benchmark labels are local to the implementation, machine, objective and workload.
+Do not compare native-library sorting against Python-loop textbook implementations
+and attribute the whole difference to algorithm choice without acknowledging it.
+A small selector may cost more than it saves on small arrays.
+
+#### A7.5 Learn algorithm execution as a different experiment
+
+Start with insertion sort or a simple compare-exchange procedure before recursive
+quicksort/merge planning. Supervise actions, not just the final sorted sequence:
+state + instruction -> compare/read/write/swap/move or bounded control action ->
+verified next state. If comparison answers come from code, state that explicitly.
+
+- [ ] Define state, cursor/index, temporary storage and bounded action vocabulary.
+- [ ] Generate valid execution traces and distinguish multiple valid algorithms
+  or trajectories from incorrect actions.
+- [ ] Train the next action and its arguments; compare FFN state policies, RNNs and
+  Transformers where their interfaces make sense.
+- [ ] Execute actions through a checked interpreter, preserving object identities
+  and rejecting out-of-range or invalid operations.
+- [ ] Measure free-running task completion, step validity, termination, stability,
+  runtime/step count and transfer to longer arrays. Teacher-forced action accuracy
+  alone is not a successful execution guarantee.
+- [ ] Add step budgets and loop detection; report budget exhaustion honestly.
+- [ ] Later explore merge/partition/pivot decisions, specialized counting/radix
+  procedures, and an optional selector coordinating trained or exact executors.
+
+Keep three claims separate: predicting a correct sorted result, selecting a good
+algorithm, and correctly executing that algorithm. An emitted explanation is not
+an execution trace unless the steps were actually checked and performed.
+
+Exit: one bounded search task and one algorithm-selection or action-execution
+experiment with reproducible data, explicit guarantees, costs and failure traces.
+This branch is educational and optional; ordinary code remains the production
+baseline for known exact search/sorting operations.
 
 ### A3. OCR and historical documents
 
